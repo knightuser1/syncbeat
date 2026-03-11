@@ -768,6 +768,12 @@ let receivedSize = 0;
 const CHUNK = 32768; // 32KB per chunk — reliable for PeerJS
 const COLORS = ['#6c63ff','#ff4d6d','#00f5d4','#ffd60a','#a78bfa','#f97316'];
 
+// Latency compensation
+const peerLatency = {};    // peerId -> one-way latency in seconds
+const pingTimers = {};     // peerId -> pending ping timestamp
+const PING_INTERVAL = 4000;
+let listenerLatency = 0;   // measured latency on listener side (seconds)
+
 // ── Utilities ──
 function toast(msg, dur=3500) {
   const el = document.getElementById('toast');
@@ -893,9 +899,28 @@ function onListenerConnect(conn) {
   });
 
   conn.on('data', msg => {
-    // Listeners can request a resend
     if (msg.type === 'request-file') sendFileToConn(conn);
+    // Pong: calculate one-way latency
+    if (msg.type === 'pong' && pingTimers[conn.peer]) {
+      const rtt = (performance.now() - pingTimers[conn.peer]) / 1000;
+      peerLatency[conn.peer] = rtt / 2; // one-way
+      delete pingTimers[conn.peer];
+    }
   });
+
+  // Periodically ping this listener to measure latency
+  const pingLoop = setInterval(() => {
+    if (!conn.open) { clearInterval(pingLoop); return; }
+    pingTimers[conn.peer] = performance.now();
+    try { conn.send({ type:'ping', t: performance.now() }); } catch(e){}
+  }, PING_INTERVAL);
+  // First ping immediately
+  setTimeout(() => {
+    if (conn.open) {
+      pingTimers[conn.peer] = performance.now();
+      try { conn.send({ type:'ping', t: performance.now() }); } catch(e){}
+    }
+  }, 300);
 
   conn.on('close', () => {
     delete activeConns[conn.peer];
@@ -930,10 +955,20 @@ async function sendFileToConn(conn) {
   conn.send({ type:'file-end' });
 }
 
-// ── Broadcast control messages to ALL listeners ──
+// ── Broadcast control messages to ALL listeners, with per-peer latency compensation ──
 function broadcast(msg) {
-  Object.values(activeConns).forEach(({ conn }) => {
-    if (conn.open) try { conn.send(msg); } catch(e){}
+  Object.entries(activeConns).forEach(([peerId, { conn }]) => {
+    if (!conn.open) return;
+    try {
+      const latency = peerLatency[peerId] || 0.08; // default 80ms if not measured yet
+      let out = { ...msg, sentAt: performance.now() };
+      // For play/seek/sync: shift position forward by estimated one-way latency
+      // so listener starts at the right spot by the time the message arrives
+      if ((msg.type === 'play' || msg.type === 'seek' || msg.type === 'sync') && msg.position != null) {
+        out.position = msg.position + latency;
+      }
+      conn.send(out);
+    } catch(e){}
   });
 }
 
@@ -1011,6 +1046,13 @@ function hostSeek(e) {
   hostAudio.currentTime = (e.offsetX/bar.offsetWidth)*hostAudio.duration;
   broadcast({ type:'seek', position: hostAudio.currentTime });
 }
+
+// Periodic re-sync every 8 seconds while playing — corrects any accumulated drift
+setInterval(() => {
+  if (isPlaying && Object.keys(activeConns).length > 0) {
+    broadcast({ type:'seek', position: hostAudio.currentTime });
+  }
+}, 8000);
 
 function updateSyncStatus() {
   const n = Object.keys(activeConns).length;
@@ -1134,6 +1176,13 @@ async function joinRoom() {
 // ── Handle all messages from host ──
 function onHostMessage(msg) {
 
+  // ── Ping from host → reply immediately ──
+  if (msg.type === 'ping') {
+    if (listenerConn && listenerConn.open) {
+      try { listenerConn.send({ type:'pong', t: msg.t }); } catch(e){}
+    }
+  }
+
   // ── Welcome ──
   if (msg.type === 'welcome') {
     document.getElementById('listener-host-name').textContent = msg.hostName || 'Host';
@@ -1210,20 +1259,22 @@ function onHostMessage(msg) {
   // ── Play ──
   if (msg.type === 'play') {
     if (!listenerAudio || !listenerAudio.src) {
-      // File not received yet — request it
       if (listenerConn && listenerConn.open) listenerConn.send({ type:'request-file' });
       toast('⏳ Loading audio, please wait...');
       return;
     }
-    listenerAudio.currentTime = msg.position || 0;
+    // Extra drift: time spent in transit since host sent (on top of pre-compensated position)
+    const transitExtra = msg.sentAt ? (performance.now() - msg.sentAt) / 1000 : 0;
+    const targetPos = Math.max(0, (msg.position || 0) + transitExtra);
+    listenerAudio.currentTime = targetPos;
     listenerAudio.play().then(() => {
       setPlayingUI(true);
       document.getElementById('listener-track-name').textContent = msg.trackName || document.getElementById('listener-track-name').textContent;
       toast('🎵 Music started!');
     }).catch(() => {
-      // Autoplay blocked — need user gesture
       toast('🔔 Tap anywhere to start audio!');
       const resume = () => {
+        listenerAudio.currentTime = Math.max(0, targetPos + 0.1);
         listenerAudio.play().catch(()=>{});
         setPlayingUI(true);
       };
@@ -1245,7 +1296,8 @@ function onHostMessage(msg) {
   // ── Seek ──
   if (msg.type === 'seek') {
     if (listenerAudio) {
-      listenerAudio.currentTime = msg.position || 0;
+      const transitExtra = msg.sentAt ? (performance.now() - msg.sentAt) / 1000 : 0;
+      listenerAudio.currentTime = Math.max(0, (msg.position || 0) + transitExtra);
     }
   }
 }
