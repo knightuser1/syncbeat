@@ -1,780 +1,1112 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SyncBeat Global — Stream Music Anywhere</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>SyncBeat — Listen Together</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;700&display=swap');
-
+/* ═══════════════════════════════════════════
+   TOKENS & THEMES
+═══════════════════════════════════════════ */
 :root {
-  --bg: #080810;
-  --surface: #0f0f1a;
-  --card: #141425;
-  --border: #1e1e35;
-  --accent: #6c63ff;
-  --hot: #ff4d6d;
-  --cyan: #00f5d4;
-  --yellow: #ffd60a;
-  --text: #e8e8f5;
-  --muted: #5a5a80;
-  --radius: 18px;
+  --r: 16px;
+  --transition: 0.25s cubic-bezier(.4,0,.2,1);
+}
+[data-theme="dark"] {
+  --bg:       #0c0c10;
+  --bg2:      #111118;
+  --surface:  #18181f;
+  --card:     #1e1e28;
+  --card2:    #242430;
+  --border:   #2a2a38;
+  --border2:  #333345;
+  --text:     #f0f0f8;
+  --text2:    #9898b8;
+  --text3:    #55557a;
+  --gold:     #f5c842;
+  --teal:     #00e5c8;
+  --rose:     #ff4d72;
+  --violet:   #8b5cf6;
+  --green:    #22c55e;
+  --shadow:   0 8px 32px rgba(0,0,0,0.5);
+  --glow-gold: 0 0 30px rgba(245,200,66,0.25);
+  --glow-teal: 0 0 30px rgba(0,229,200,0.2);
+}
+[data-theme="light"] {
+  --bg:       #f5f4f0;
+  --bg2:      #eeede8;
+  --surface:  #e8e7e0;
+  --card:     #ffffff;
+  --card2:    #f9f8f5;
+  --border:   #dddcd5;
+  --border2:  #cccbc3;
+  --text:     #1a1a24;
+  --text2:    #5a5a72;
+  --text3:    #9898a8;
+  --gold:     #d4a017;
+  --teal:     #008877;
+  --rose:     #e0304a;
+  --violet:   #6d43d4;
+  --green:    #16a34a;
+  --shadow:   0 8px 32px rgba(0,0,0,0.1);
+  --glow-gold: 0 0 20px rgba(212,160,23,0.15);
+  --glow-teal: 0 0 20px rgba(0,136,119,0.1);
 }
 
+/* ═══════════════════════════════════════════
+   RESET & BASE
+═══════════════════════════════════════════ */
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-
-html { scroll-behavior: smooth; }
-
+html { scroll-behavior:smooth; }
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'DM Sans', sans-serif;
+  font-family: 'Syne', sans-serif;
   min-height: 100vh;
   overflow-x: hidden;
+  transition: background var(--transition), color var(--transition);
 }
 
-/* Noise overlay */
+/* Ambient background */
+.ambient {
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+}
+.ambient-blob {
+  position: absolute; border-radius: 50%; filter: blur(100px); opacity: 0.06;
+  animation: blobFloat 20s ease-in-out infinite alternate;
+}
+.ambient-blob:nth-child(1) { width:600px;height:600px;background:var(--gold);top:-200px;right:-100px;animation-delay:0s; }
+.ambient-blob:nth-child(2) { width:500px;height:500px;background:var(--teal);bottom:-150px;left:-150px;animation-delay:-7s; }
+.ambient-blob:nth-child(3) { width:300px;height:300px;background:var(--violet);top:40%;left:40%;animation-delay:-14s; }
+[data-theme="light"] .ambient-blob { opacity: 0.04; }
+@keyframes blobFloat {
+  from { transform: translate(0,0) scale(1); }
+  to   { transform: translate(40px,60px) scale(1.1); }
+}
+
+/* Grain texture */
 body::after {
-  content:'';
-  position:fixed;
-  inset:0;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
-  pointer-events:none;
-  z-index:0;
-  opacity:.5;
+  content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  opacity:.4;
 }
 
-/* Gradient blobs */
-.blob1, .blob2 {
-  position: fixed;
-  border-radius: 50%;
-  filter: blur(120px);
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.12;
-}
-.blob1 { width:500px; height:500px; background:var(--accent); top:-150px; right:-150px; animation: blobMove1 12s ease-in-out infinite alternate; }
-.blob2 { width:400px; height:400px; background:var(--hot); bottom:-100px; left:-100px; animation: blobMove2 15s ease-in-out infinite alternate; }
-@keyframes blobMove1 { from{transform:translate(0,0) scale(1)} to{transform:translate(-60px,80px) scale(1.2)} }
-@keyframes blobMove2 { from{transform:translate(0,0) scale(1)} to{transform:translate(80px,-60px) scale(1.15)} }
-
+/* ═══════════════════════════════════════════
+   LAYOUT
+═══════════════════════════════════════════ */
 .app {
-  position: relative;
-  z-index: 1;
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 32px 20px 60px;
+  position: relative; z-index: 1;
+  max-width: 940px; margin: 0 auto;
+  padding: 28px 18px 120px;
 }
 
-/* ── HEADER ── */
-.header { text-align:center; margin-bottom:44px; }
-
-.logo-wrap { display:inline-flex; align-items:center; gap:14px; }
-
-.logo-icon {
-  width: 52px; height: 52px;
-  background: linear-gradient(135deg, var(--accent), var(--hot));
-  border-radius: 14px;
-  display: flex; align-items:center; justify-content:center;
-  font-size: 1.5rem;
-  box-shadow: 0 0 30px rgba(108,99,255,0.5);
-  animation: iconPulse 3s ease-in-out infinite;
+/* ═══════════════════════════════════════════
+   HEADER
+═══════════════════════════════════════════ */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 36px; flex-wrap: wrap; gap: 16px;
 }
-@keyframes iconPulse { 0%,100%{box-shadow:0 0 20px rgba(108,99,255,0.4)} 50%{box-shadow:0 0 40px rgba(108,99,255,0.7)} }
-
-.logo-text {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 3.2rem;
-  letter-spacing: 3px;
-  background: linear-gradient(135deg, #fff 30%, var(--accent));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+.logo-group { display:flex; align-items:center; gap:12px; }
+.logo-mark {
+  width:46px;height:46px;
+  background: linear-gradient(135deg, var(--gold), var(--rose));
+  border-radius: 13px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.3rem;
+  box-shadow: var(--glow-gold);
+  animation: logoBreath 4s ease-in-out infinite;
 }
-
-.tagline {
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: 0.82rem;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  font-weight: 500;
+@keyframes logoBreath {
+  0%,100% { box-shadow: var(--glow-gold); }
+  50% { box-shadow: 0 0 50px rgba(245,200,66,0.5); }
 }
-
-.global-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: rgba(0,245,212,0.1);
-  border: 1px solid rgba(0,245,212,0.25);
-  color: var(--cyan);
-  font-size: 0.68rem;
-  letter-spacing: 2px;
-  padding: 5px 14px;
-  border-radius: 99px;
-  margin-top: 14px;
-  text-transform: uppercase;
-  font-weight: 700;
+.logo-name {
+  font-size: 1.7rem; font-weight: 800; letter-spacing: -1px;
+  background: linear-gradient(135deg, var(--text) 40%, var(--gold));
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
 }
+.logo-sub { font-size:0.6rem; color:var(--text3); letter-spacing:3px; text-transform:uppercase; margin-top:1px; }
 
-/* ── TABS ── */
+.header-actions { display:flex; gap:10px; align-items:center; }
+
+.theme-toggle {
+  width:38px;height:38px; border-radius:10px;
+  background:var(--surface); border:1px solid var(--border);
+  color:var(--text2); font-size:1rem; cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition: all var(--transition);
+}
+.theme-toggle:hover { border-color:var(--gold); color:var(--gold); }
+
+/* ═══════════════════════════════════════════
+   TABS
+═══════════════════════════════════════════ */
 .tabs {
-  display: flex;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 5px;
-  margin-bottom: 28px;
-  gap: 4px;
+  display:flex; background:var(--surface); border:1px solid var(--border);
+  border-radius:14px; padding:4px; margin-bottom:24px; gap:3px;
 }
 .tab-btn {
-  flex:1; padding:12px 8px;
-  background: transparent; border:none;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.8rem; font-weight:600;
-  color: var(--muted);
-  border-radius: 10px;
-  cursor: pointer;
-  transition: all 0.25s;
-  letter-spacing: 0.5px;
+  flex:1; padding:11px 8px;
+  background:transparent; border:none;
+  font-family:'Syne',sans-serif; font-size:0.78rem; font-weight:700;
+  color:var(--text2); border-radius:11px; cursor:pointer;
+  transition: all var(--transition); letter-spacing:0.3px;
 }
 .tab-btn.active {
-  background: linear-gradient(135deg, var(--accent), var(--hot));
-  color: white;
-  box-shadow: 0 4px 20px rgba(108,99,255,0.4);
+  background: linear-gradient(135deg, var(--gold), var(--rose));
+  color: #000;
+  box-shadow: 0 4px 16px rgba(245,200,66,0.3);
 }
+.tab-btn:not(.active):hover { color:var(--text); background:var(--card2); }
 
-/* ── PANELS ── */
-.panel { display:none; animation: panelIn 0.3s ease; }
-.panel.active { display:block; }
-@keyframes panelIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+/* ═══════════════════════════════════════════
+   PANELS
+═══════════════════════════════════════════ */
+.panel { display:none; }
+.panel.active { display:block; animation: panelIn 0.3s ease; }
+@keyframes panelIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
 
-/* ── CARD ── */
+/* ═══════════════════════════════════════════
+   CARDS
+═══════════════════════════════════════════ */
 .card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 26px;
-  margin-bottom: 18px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 22px; margin-bottom: 16px;
+  transition: background var(--transition), border-color var(--transition);
 }
 .card-label {
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 3px;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  font-size: 0.6rem; font-weight: 700; letter-spacing: 3px;
+  text-transform: uppercase; color: var(--gold); margin-bottom: 16px;
+  display: flex; align-items: center; gap: 8px;
 }
 .card-label::after {
-  content:'';
-  flex:1;
-  height:1px;
+  content:''; flex:1; height:1px;
   background: linear-gradient(90deg, var(--border), transparent);
 }
 
-/* ── INPUTS ── */
-.field-group { display:flex; gap:10px; flex-wrap:wrap; }
-
+/* ═══════════════════════════════════════════
+   INPUTS & BUTTONS
+═══════════════════════════════════════════ */
 .field {
-  flex:1; min-width:160px;
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  color: var(--text);
-  padding: 13px 17px;
-  border-radius: 12px;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.88rem;
-  font-weight: 500;
-  outline: none;
-  transition: all 0.25s;
+  width:100%; background:var(--surface); border:1.5px solid var(--border);
+  color:var(--text); padding:12px 16px; border-radius:11px;
+  font-family:'Syne',sans-serif; font-size:0.88rem; font-weight:600;
+  outline:none; transition:all var(--transition);
 }
-.field:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(108,99,255,0.15); }
-.field::placeholder { color: var(--muted); }
-.field.code-field { text-transform:uppercase; letter-spacing:6px; text-align:center; font-family:'Bebas Neue',sans-serif; font-size:1.4rem; }
+.field:focus { border-color:var(--gold); box-shadow:0 0 0 3px rgba(245,200,66,0.12); }
+.field::placeholder { color:var(--text3); font-weight:400; }
+.field-row { display:flex; gap:10px; flex-wrap:wrap; }
+.field-code {
+  text-transform:uppercase; letter-spacing:6px; text-align:center;
+  font-family:'JetBrains Mono',monospace; font-size:1.3rem; font-weight:500;
+}
 
-/* ── BUTTONS ── */
 .btn {
-  padding: 13px 22px;
-  border: none; border-radius: 12px;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 0.85rem; font-weight:700;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
+  padding:12px 20px; border:none; border-radius:11px;
+  font-family:'Syne',sans-serif; font-size:0.82rem; font-weight:700;
+  cursor:pointer; transition:all var(--transition); white-space:nowrap;
+  display:inline-flex; align-items:center; gap:6px;
 }
 .btn-prime {
-  background: linear-gradient(135deg, var(--accent), var(--hot));
-  color: white;
-  box-shadow: 0 4px 22px rgba(108,99,255,0.35);
+  background: linear-gradient(135deg, var(--gold), var(--rose));
+  color: #0c0c10;
+  box-shadow: 0 4px 18px rgba(245,200,66,0.3);
 }
-.btn-prime:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 8px 30px rgba(108,99,255,0.5); }
-.btn-outline {
-  background: transparent;
-  border: 1.5px solid var(--border);
-  color: var(--muted);
-}
-.btn-outline:hover { border-color:var(--accent); color:var(--accent); }
-.btn-cyan {
-  background: rgba(0,245,212,0.1);
-  border: 1.5px solid var(--cyan);
-  color: var(--cyan);
-}
-.btn-cyan:hover { background: rgba(0,245,212,0.2); }
-.btn-danger {
-  background: rgba(255,77,109,0.1);
-  border: 1.5px solid var(--hot);
-  color: var(--hot);
-}
-.btn-danger:hover { background: rgba(255,77,109,0.2); }
+.btn-prime:hover:not(:disabled) { transform:translateY(-2px); box-shadow:0 8px 28px rgba(245,200,66,0.45); }
+.btn-teal { background:rgba(0,229,200,0.1); border:1.5px solid var(--teal); color:var(--teal); }
+.btn-teal:hover { background:rgba(0,229,200,0.2); }
+.btn-rose { background:rgba(255,77,114,0.1); border:1.5px solid var(--rose); color:var(--rose); }
+.btn-rose:hover { background:rgba(255,77,114,0.2); }
+.btn-ghost { background:transparent; border:1.5px solid var(--border); color:var(--text2); }
+.btn-ghost:hover { border-color:var(--gold); color:var(--gold); }
+.btn-violet { background:rgba(139,92,246,0.12); border:1.5px solid var(--violet); color:var(--violet); }
+.btn-violet:hover { background:rgba(139,92,246,0.2); }
 .btn:disabled { opacity:0.35; cursor:not-allowed; transform:none !important; }
-.btn-sm { padding:8px 14px; font-size:0.75rem; border-radius:9px; }
+.btn-sm { padding:7px 13px; font-size:0.72rem; border-radius:8px; }
+.btn-xs { padding:5px 10px; font-size:0.65rem; border-radius:7px; }
 
-/* ── ROOM CODE DISPLAY ── */
-.room-hero {
-  background: linear-gradient(135deg, rgba(108,99,255,0.12), rgba(255,77,109,0.08));
-  border: 1.5px solid rgba(108,99,255,0.3);
-  border-radius: 16px;
-  padding: 24px;
-  text-align: center;
-  position: relative;
-  overflow: hidden;
+/* ═══════════════════════════════════════════
+   BADGES
+═══════════════════════════════════════════ */
+.badge {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:4px 11px; border-radius:99px;
+  font-size:0.6rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
 }
-.room-hero::before {
-  content:'';
-  position:absolute;
-  inset:0;
-  background: radial-gradient(circle at 50% 0%, rgba(108,99,255,0.15) 0%, transparent 70%);
-  pointer-events:none;
+.badge-live { background:rgba(0,229,200,0.1); color:var(--teal); border:1px solid rgba(0,229,200,0.25); }
+.badge-idle { background:rgba(150,150,180,0.1); color:var(--text3); border:1px solid var(--border); }
+.badge-warn { background:rgba(245,200,66,0.1); color:var(--gold); border:1px solid rgba(245,200,66,0.3); }
+.badge-rose { background:rgba(255,77,114,0.1); color:var(--rose); border:1px solid rgba(255,77,114,0.3); }
+.dot { width:6px;height:6px;border-radius:50%;background:currentColor; flex-shrink:0; }
+.dot.pulse { animation: dotPulse 1.3s ease infinite; }
+@keyframes dotPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.5)} }
+
+/* ═══════════════════════════════════════════
+   ROOM CODE HERO
+═══════════════════════════════════════════ */
+.room-hero {
+  background: linear-gradient(135deg, rgba(245,200,66,0.08), rgba(255,77,114,0.05));
+  border: 1.5px solid rgba(245,200,66,0.2);
+  border-radius: 14px; padding: 22px; text-align: center;
 }
 .room-code-big {
-  font-family: 'Bebas Neue', sans-serif;
-  font-size: 4rem;
-  letter-spacing: 14px;
-  color: white;
-  text-shadow: 0 0 40px rgba(108,99,255,0.6);
-  margin: 4px 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 3.2rem; font-weight: 700; letter-spacing: 10px;
+  color: var(--gold); text-shadow: var(--glow-gold); margin: 4px 0;
 }
-.room-hint { color:var(--muted); font-size:0.72rem; margin-top:6px; }
-.copy-row { display:flex; gap:10px; justify-content:center; margin-top:16px; flex-wrap:wrap; }
+.room-hint { color:var(--text3); font-size:0.7rem; margin-top:6px; }
+.copy-row { display:flex; gap:8px; justify-content:center; margin-top:14px; flex-wrap:wrap; }
 
-/* ── STATUS BADGES ── */
-.badge {
-  display:inline-flex; align-items:center; gap:6px;
-  padding:5px 12px; border-radius:99px;
-  font-size:0.65rem; font-weight:700; letter-spacing:1.5px; text-transform:uppercase;
-}
-.badge-live { background:rgba(0,245,212,0.1); color:var(--cyan); border:1px solid rgba(0,245,212,0.3); }
-.badge-idle { background:rgba(90,90,128,0.2); color:var(--muted); border:1px solid var(--border); }
-.badge-warn { background:rgba(255,214,10,0.1); color:var(--yellow); border:1px solid rgba(255,214,10,0.3); }
-.dot { width:7px;height:7px;border-radius:50%;background:currentColor; }
-.dot.pulse { animation:dotPulse 1.2s ease infinite; }
-@keyframes dotPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.6)} }
-
-/* ── UPLOAD ── */
+/* ═══════════════════════════════════════════
+   UPLOAD ZONE
+═══════════════════════════════════════════ */
 .upload-zone {
-  border: 2px dashed var(--border);
-  border-radius: 14px;
-  padding: 40px 20px;
-  text-align: center;
-  cursor: pointer;
-  position: relative;
-  transition: all 0.3s;
+  border: 2px dashed var(--border); border-radius: 13px;
+  padding: 32px 16px; text-align: center; cursor: pointer;
+  position: relative; transition: all var(--transition);
 }
 .upload-zone:hover, .upload-zone.over {
-  border-color: var(--accent);
-  background: rgba(108,99,255,0.05);
+  border-color: var(--gold); background: rgba(245,200,66,0.04);
 }
-.upload-zone input { position:absolute;inset:0;opacity:0;cursor:pointer; }
-.upload-icon-big { font-size:3rem; margin-bottom:8px; }
-.upload-label { color:var(--muted); font-size:0.8rem; }
-.upload-label strong { color:var(--accent); }
+.upload-zone input { position:absolute;inset:0;opacity:0;cursor:pointer; width:100%;height:100%; }
+.upload-icon { font-size:2.4rem; margin-bottom:8px; }
+.upload-text { color:var(--text2); font-size:0.78rem; }
+.upload-text strong { color:var(--gold); }
 
-/* ── NOW PLAYING ── */
-.now-playing {
-  display:flex; align-items:center; gap:16px;
-  background: var(--surface); border-radius:14px; padding:16px;
-  margin-top:14px; border:1px solid var(--border);
+/* ═══════════════════════════════════════════
+   NOW PLAYING / PLAYER
+═══════════════════════════════════════════ */
+.player-card {
+  background: linear-gradient(135deg, var(--card), var(--card2));
+  border: 1px solid var(--border); border-radius: var(--r);
+  overflow: hidden; margin-bottom: 16px;
 }
-.disc {
-  width:54px;height:54px;
-  background: linear-gradient(135deg, var(--accent), var(--hot));
-  border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  font-size:1.3rem; flex-shrink:0;
-  position:relative;
+.player-art-strip {
+  height: 6px;
+  background: linear-gradient(90deg, var(--gold), var(--rose), var(--violet), var(--teal));
+  background-size: 300% 100%;
+  animation: artStrip 4s linear infinite;
 }
-.disc::after {
-  content:'';
-  position:absolute;
-  width:16px;height:16px;
-  background:var(--card);
-  border-radius:50%;
+@keyframes artStrip { from{background-position:0% 0%} to{background-position:300% 0%} }
+.player-art-strip.paused { animation-play-state: paused; }
+
+.player-body { padding:20px; }
+.player-top { display:flex; align-items:center; gap:16px; margin-bottom:18px; }
+
+.album-art {
+  width:70px;height:70px; border-radius:12px; flex-shrink:0;
+  background: linear-gradient(135deg, var(--gold)33, var(--rose)33);
+  display:flex;align-items:center;justify-content:center;font-size:1.8rem;
+  overflow:hidden; position:relative;
 }
-.disc.spinning { animation:discSpin 3s linear infinite; }
+.album-art img { width:100%;height:100%;object-fit:cover;border-radius:12px; }
+.album-art.spinning { animation: discSpin 4s linear infinite; }
+.album-art.spinning img { animation: none; }
+.disc-hole {
+  position:absolute; width:18px;height:18px;
+  background:var(--card); border-radius:50%; z-index:2;
+}
 @keyframes discSpin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
 
-.track-details { flex:1; overflow:hidden; }
-.track-title { font-weight:700; font-size:0.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.track-sub { color:var(--muted); font-size:0.7rem; margin-top:3px; }
+.track-info-col { flex:1; overflow:hidden; }
+.track-title { font-weight:800; font-size:1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.track-artist { color:var(--text2); font-size:0.75rem; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.track-album { color:var(--text3); font-size:0.65rem; margin-top:2px; }
 
-/* ── WAVEFORM ── */
-.wave {
-  display:flex; align-items:flex-end; gap:2.5px;
-  height:38px;
+/* EQ Bars */
+.eq-bars {
+  display:flex;align-items:flex-end;gap:2px;height:28px;margin-top:6px;
 }
-.wbar {
-  flex:1; min-height:3px;
-  background: linear-gradient(to top, var(--accent), var(--cyan));
-  border-radius:2px 2px 0 0;
-  opacity:0.8;
+.eq-bar {
+  width:3px; min-height:2px; border-radius:2px 2px 0 0;
+  background: linear-gradient(to top, var(--gold), var(--rose));
   transform-origin: bottom;
-  animation: waveAnim 0.7s ease-in-out infinite alternate;
+  animation: eqAnim 0.6s ease-in-out infinite alternate;
 }
-@keyframes waveAnim { from{transform:scaleY(0.25)} to{transform:scaleY(1)} }
-.wave.stopped .wbar { animation-play-state:paused; transform:scaleY(0.25); }
+.eq-bar:nth-child(2n)   { animation-delay:0.1s; background:linear-gradient(to top,var(--teal),var(--violet)); }
+.eq-bar:nth-child(3n)   { animation-delay:0.2s; }
+.eq-bar:nth-child(4n)   { animation-delay:0.15s; }
+.eq-bar:nth-child(5n)   { animation-delay:0.3s; }
+@keyframes eqAnim { from{transform:scaleY(0.15)} to{transform:scaleY(1)} }
+.eq-bars.paused .eq-bar { animation-play-state:paused; transform:scaleY(0.15); }
 
-/* ── CONTROLS ── */
-.controls-wrap { margin-top:20px; }
-.seek-wrap {
-  height:5px; background:var(--border); border-radius:99px; cursor:pointer; margin-bottom:8px; position:relative;
+/* Progress */
+.progress-wrap {
+  height:4px; background:var(--surface); border-radius:99px;
+  cursor:pointer; position:relative; margin-bottom:6px;
 }
-.seek-fill {
-  height:100%; background:linear-gradient(90deg,var(--accent),var(--cyan));
-  border-radius:99px; transition:width 0.2s;
-  position:relative;
+.progress-fill {
+  height:100%; background:linear-gradient(90deg,var(--gold),var(--rose));
+  border-radius:99px; transition:width 0.4s linear; position:relative;
 }
-.seek-fill::after {
-  content:'';
-  position:absolute; right:-6px; top:-5px;
-  width:15px;height:15px;
-  background:white; border-radius:50%;
-  box-shadow:0 0 10px rgba(108,99,255,0.7);
-  opacity:0;
-  transition:opacity 0.2s;
+.progress-fill::after {
+  content:''; position:absolute; right:-6px; top:-5px;
+  width:14px;height:14px; background:var(--gold); border-radius:50%;
+  box-shadow: var(--glow-gold); opacity:0; transition:opacity 0.2s;
 }
-.seek-wrap:hover .seek-fill::after { opacity:1; }
+.progress-wrap:hover .progress-fill::after { opacity:1; }
+.time-row { display:flex;justify-content:space-between;color:var(--text3);font-size:0.62rem;font-family:'JetBrains Mono',monospace; }
 
-.times { display:flex; justify-content:space-between; color:var(--muted); font-size:0.65rem; }
-
-.ctrl-row {
-  display:flex; align-items:center; gap:12px; margin-top:18px; flex-wrap:wrap;
-}
+/* Controls */
+.ctrl-row { display:flex;align-items:center;justify-content:center;gap:12px;margin:16px 0 10px; }
 .ctrl-btn {
-  width:44px;height:44px;border-radius:50%;
+  width:40px;height:40px;border-radius:50%;
   background:var(--surface); border:1.5px solid var(--border);
-  color:var(--text); font-size:1rem;
+  color:var(--text2); cursor:pointer; font-size:0.9rem;
   display:flex;align-items:center;justify-content:center;
-  cursor:pointer; transition:all 0.2s;
+  transition:all var(--transition);
 }
-.ctrl-btn:hover { border-color:var(--accent); color:var(--accent); }
-.play-pause {
-  width:56px;height:56px; font-size:1.2rem;
-  background:linear-gradient(135deg,var(--accent),var(--hot));
-  border:none; color:white;
-  box-shadow:0 0 24px rgba(108,99,255,0.45);
+.ctrl-btn:hover { border-color:var(--gold); color:var(--gold); }
+.ctrl-btn.active-ctrl { border-color:var(--gold); color:var(--gold); background:rgba(245,200,66,0.1); }
+.play-main {
+  width:56px;height:56px;font-size:1.2rem;
+  background:linear-gradient(135deg,var(--gold),var(--rose));
+  border:none; color:#0c0c10; border-radius:50%;
+  box-shadow:0 0 24px rgba(245,200,66,0.4);
 }
-.play-pause:hover { transform:scale(1.08); }
+.play-main:hover { transform:scale(1.08); }
 
-.vol-row { display:flex; align-items:center; gap:10px; margin-top:14px; }
+/* Volume */
+.vol-row { display:flex;align-items:center;gap:10px;padding:0 4px; }
 input[type=range] {
-  -webkit-appearance:none; flex:1; height:4px;
-  background:var(--border); border-radius:99px; outline:none;
+  -webkit-appearance:none; flex:1; height:3px;
+  background:var(--border); border-radius:99px; outline:none; cursor:pointer;
 }
 input[type=range]::-webkit-slider-thumb {
-  -webkit-appearance:none;
-  width:14px;height:14px;border-radius:50%;
-  background:var(--accent); cursor:pointer;
+  -webkit-appearance:none; width:13px;height:13px;border-radius:50%;
+  background:var(--gold); cursor:pointer;
+  box-shadow:0 0 6px rgba(245,200,66,0.5);
 }
 
-/* ── LISTENERS GRID ── */
-.l-grid {
-  display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
+/* ═══════════════════════════════════════════
+   QUEUE / PLAYLIST
+═══════════════════════════════════════════ */
+.queue-list { display:flex;flex-direction:column;gap:6px;margin-top:10px;max-height:260px;overflow-y:auto; }
+.queue-list::-webkit-scrollbar { width:4px; }
+.queue-list::-webkit-scrollbar-track { background:transparent; }
+.queue-list::-webkit-scrollbar-thumb { background:var(--border2);border-radius:99px; }
+
+.queue-item {
+  display:flex;align-items:center;gap:12px;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:10px 12px; cursor:pointer;
+  transition:all var(--transition); position:relative;
+}
+.queue-item:hover { border-color:var(--gold); background:rgba(245,200,66,0.04); }
+.queue-item.playing { border-color:var(--gold); background:rgba(245,200,66,0.08); }
+.queue-item.playing::before {
+  content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+  background:linear-gradient(to bottom,var(--gold),var(--rose));
+  border-radius:3px 0 0 3px;
+}
+.q-num {
+  font-family:'JetBrains Mono',monospace; font-size:0.65rem; color:var(--text3);
+  width:18px; text-align:center; flex-shrink:0;
+}
+.q-art {
+  width:36px;height:36px;border-radius:7px;
+  background:var(--card2); flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:1rem;overflow:hidden;
+}
+.q-art img { width:100%;height:100%;object-fit:cover;border-radius:7px; }
+.q-info { flex:1; overflow:hidden; }
+.q-name { font-size:0.8rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.q-artist { font-size:0.65rem;color:var(--text2);margin-top:2px; }
+.q-votes {
+  font-size:0.7rem; color:var(--violet); font-weight:700;
+  background:rgba(139,92,246,0.12); border-radius:6px; padding:2px 7px;
+  flex-shrink:0;
+}
+.q-actions { display:flex;gap:4px; flex-shrink:0; }
+
+/* ═══════════════════════════════════════════
+   LISTENERS GRID
+═══════════════════════════════════════════ */
+.listeners-grid {
+  display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
   gap:10px; margin-top:12px;
 }
-.l-card {
+.listener-card {
   background:var(--surface); border:1px solid var(--border);
-  border-radius:13px; padding:16px 10px; text-align:center;
-  animation:cardIn 0.4s ease;
-  transition: border-color 0.3s, box-shadow 0.3s;
+  border-radius:13px; padding:14px 10px; text-align:center;
+  animation:cardIn 0.35s ease; transition:all var(--transition);
 }
-.l-card.synced { border-color:rgba(0,245,212,0.4); box-shadow:0 0 16px rgba(0,245,212,0.1); }
+.listener-card.live { border-color:rgba(0,229,200,0.35); background:rgba(0,229,200,0.04); }
 @keyframes cardIn { from{opacity:0;transform:scale(0.85)} to{opacity:1;transform:scale(1)} }
 .l-avatar {
-  width:40px;height:40px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  font-size:1.1rem; margin:0 auto 8px; font-weight:700;
+  width:40px;height:40px;border-radius:50%;margin:0 auto 8px;
+  display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800;
 }
-.l-name { font-size:0.68rem; font-weight:700; color:var(--text); }
-.l-stat { font-size:0.58rem; color:var(--muted); margin-top:2px; }
+.l-name { font-size:0.68rem;font-weight:700; }
+.l-ping {
+  font-family:'JetBrains Mono',monospace; font-size:0.55rem;
+  color:var(--text3); margin-top:3px;
+}
+.l-ping.good { color:var(--green); }
+.l-ping.ok   { color:var(--gold); }
+.l-ping.bad  { color:var(--rose); }
+.l-eq { height:16px; display:flex;align-items:flex-end;gap:1.5px;justify-content:center;margin-top:6px; }
+.l-eq-bar {
+  width:2.5px; min-height:2px; border-radius:1px;
+  background:var(--teal); transform-origin:bottom;
+  animation:eqAnim 0.5s ease-in-out infinite alternate;
+}
+.l-eq-bar:nth-child(2n) { animation-delay:0.12s; background:var(--gold); }
+.l-eq-bar:nth-child(3n) { animation-delay:0.24s; background:var(--violet); }
+.l-eq.paused .l-eq-bar { animation-play-state:paused; transform:scaleY(0.15); }
 
-/* ── LISTENER PLAYER ── */
-.listener-hero {
-  background: linear-gradient(135deg, rgba(0,245,212,0.08), rgba(108,99,255,0.06));
-  border: 1.5px solid rgba(0,245,212,0.25);
-  border-radius:16px; padding:24px; text-align:center;
-  margin-bottom:18px;
+/* ═══════════════════════════════════════════
+   CHAT
+═══════════════════════════════════════════ */
+.chat-panel { display:flex;flex-direction:column;height:320px; }
+.chat-messages {
+  flex:1; overflow-y:auto; padding:10px 4px;
+  display:flex;flex-direction:column;gap:8px;
 }
-.big-disc {
-  width:90px;height:90px; margin:0 auto 16px;
-  background:linear-gradient(135deg,var(--accent),var(--hot));
-  border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
-  font-size:2rem; position:relative;
-  box-shadow:0 0 50px rgba(108,99,255,0.4);
-}
-.big-disc::after { content:'';position:absolute;width:26px;height:26px;background:var(--bg);border-radius:50%; }
-.big-disc.spinning { animation:discSpin 3s linear infinite; }
-.listener-title { font-family:'Bebas Neue',sans-serif; font-size:1.6rem; letter-spacing:2px; }
-.listener-sub { color:var(--muted); font-size:0.75rem; margin-top:4px; }
+.chat-messages::-webkit-scrollbar { width:3px; }
+.chat-messages::-webkit-scrollbar-thumb { background:var(--border);border-radius:99px; }
 
-/* ── SIGNAL BAR ── */
-.signal-bar {
-  background:rgba(108,99,255,0.1); border-radius:12px;
-  padding:14px 18px; margin-top:14px;
-  display:flex; align-items:center; gap:12px;
-  border:1px solid rgba(108,99,255,0.2);
+.chat-msg { display:flex;gap:9px;align-items:flex-start; animation:msgIn 0.2s ease; }
+@keyframes msgIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.chat-avatar {
+  width:28px;height:28px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:800;
 }
-.signal-icon { font-size:1.3rem; }
-.signal-text { font-size:0.75rem; color:var(--muted); flex:1; }
-.signal-text strong { color:var(--text); }
-
-/* ── HOW IT WORKS ── */
-.how-grid {
-  display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
-  gap:14px; margin-top:16px;
-}
-.how-step {
+.chat-bubble { flex:1; }
+.chat-name { font-size:0.6rem;font-weight:700;color:var(--text3);margin-bottom:3px; }
+.chat-text {
   background:var(--surface); border:1px solid var(--border);
-  border-radius:14px; padding:20px 16px; text-align:center;
+  border-radius:0 10px 10px 10px; padding:8px 12px;
+  font-size:0.78rem; line-height:1.5; word-break:break-word;
 }
-.step-circle {
-  width:38px;height:38px; border-radius:50%;
-  background:linear-gradient(135deg,var(--accent),var(--hot));
-  color:white; font-family:'Bebas Neue',sans-serif; font-size:1.1rem;
+.chat-msg.me .chat-bubble { display:flex;flex-direction:column;align-items:flex-end; }
+.chat-msg.me .chat-text {
+  background:rgba(245,200,66,0.1); border-color:rgba(245,200,66,0.2);
+  border-radius:10px 0 10px 10px;
+}
+.chat-msg.system .chat-text {
+  background:transparent; border:none; color:var(--text3);
+  font-size:0.65rem; text-align:center; font-style:italic;
+}
+.chat-input-row { display:flex;gap:8px;margin-top:10px; border-top:1px solid var(--border);padding-top:12px; }
+.chat-input {
+  flex:1; background:var(--surface); border:1.5px solid var(--border);
+  color:var(--text); padding:10px 14px; border-radius:10px;
+  font-family:'Syne',sans-serif; font-size:0.82rem; outline:none;
+  transition:border-color var(--transition);
+}
+.chat-input:focus { border-color:var(--gold); }
+.chat-send {
+  width:40px;height:40px;border-radius:10px;
+  background:linear-gradient(135deg,var(--gold),var(--rose));
+  border:none; cursor:pointer; font-size:1rem; color:#0c0c10;
   display:flex;align-items:center;justify-content:center;
-  margin:0 auto 12px;
+  transition:all var(--transition);
 }
-.step-h { font-weight:700; font-size:0.85rem; margin-bottom:6px; }
-.step-p { color:var(--muted); font-size:0.7rem; line-height:1.6; }
+.chat-send:hover { transform:scale(1.05); }
 
-.tech-box {
-  background:var(--surface); border-radius:12px; padding:18px;
-  border-left:3px solid var(--accent); margin-top:16px; font-size:0.78rem;
-  color:var(--muted); line-height:1.7;
+/* ═══════════════════════════════════════════
+   REACTIONS
+═══════════════════════════════════════════ */
+.reaction-btns { display:flex;gap:8px;flex-wrap:wrap;margin-top:10px; }
+.reaction-btn {
+  padding:8px 14px; border-radius:99px; font-size:1rem;
+  background:var(--surface); border:1.5px solid var(--border);
+  cursor:pointer; transition:all var(--transition);
 }
-.tech-box strong { color:var(--text); }
+.reaction-btn:hover { transform:scale(1.15); border-color:var(--gold); }
 
-/* ── TOAST ── */
+/* Floating reactions */
+.reaction-float {
+  position:fixed; bottom:80px; font-size:2rem; pointer-events:none; z-index:999;
+  animation:floatUp 3s ease-out forwards;
+}
+@keyframes floatUp {
+  0%   { opacity:1;  transform:translateY(0) scale(1) rotate(0deg); }
+  60%  { opacity:0.9; transform:translateY(-160px) scale(1.3) rotate(15deg); }
+  100% { opacity:0;  transform:translateY(-300px) scale(0.6) rotate(-10deg); }
+}
+
+/* ═══════════════════════════════════════════
+   SHARE CARD
+═══════════════════════════════════════════ */
+.share-card {
+  background: linear-gradient(135deg, #1a1020, #0e1a20);
+  border-radius: 16px; padding: 24px; text-align:center;
+  border: 1px solid rgba(245,200,66,0.2);
+  position:relative; overflow:hidden;
+}
+.share-card::before {
+  content:''; position:absolute; inset:0;
+  background: radial-gradient(circle at 30% 50%, rgba(245,200,66,0.1) 0%, transparent 60%),
+              radial-gradient(circle at 70% 50%, rgba(255,77,114,0.08) 0%, transparent 60%);
+}
+.share-card-inner { position:relative; z-index:1; }
+.share-card-logo { font-size:1.8rem;font-weight:800;color:#f5c842;letter-spacing:-1px;margin-bottom:4px; }
+.share-card-song { font-size:1.1rem;font-weight:800;color:#fff;margin:10px 0 4px; }
+.share-card-artist { font-size:0.75rem;color:#aaa; }
+.share-card-code { font-family:'JetBrains Mono',monospace;font-size:2rem;color:#f5c842;letter-spacing:8px;margin:14px 0; }
+.share-card-hint { font-size:0.65rem;color:#666;letter-spacing:2px;text-transform:uppercase; }
+
+/* ═══════════════════════════════════════════
+   CONNECTION STEPS
+═══════════════════════════════════════════ */
+.conn-steps { margin-top:14px;display:flex;flex-direction:column;gap:6px; }
+.conn-step {
+  display:flex;align-items:center;gap:10px;
+  padding:9px 13px; border-radius:9px;
+  background:var(--surface); border:1px solid var(--border);
+  font-size:0.75rem; transition:all var(--transition);
+}
+.conn-step.done   { border-color:rgba(34,197,94,0.3);  color:var(--green); }
+.conn-step.active { border-color:rgba(245,200,66,0.3); color:var(--gold); }
+.conn-step.err    { border-color:rgba(255,77,114,0.3); color:var(--rose); }
+
+/* ═══════════════════════════════════════════
+   LISTENER HERO
+═══════════════════════════════════════════ */
+.listener-hero {
+  background: linear-gradient(160deg, rgba(245,200,66,0.06), rgba(0,229,200,0.04));
+  border: 1.5px solid rgba(245,200,66,0.15);
+  border-radius: var(--r); padding:28px 20px; text-align:center; margin-bottom:16px;
+}
+.listener-disc-big {
+  width:100px;height:100px;border-radius:50%;margin:0 auto 18px;
+  background:linear-gradient(135deg,var(--gold),var(--rose));
+  display:flex;align-items:center;justify-content:center;font-size:2.4rem;
+  position:relative; box-shadow:0 0 50px rgba(245,200,66,0.3);
+}
+.listener-disc-big::after { content:'';position:absolute;width:28px;height:28px;background:var(--bg);border-radius:50%; }
+.listener-disc-big.spinning { animation:discSpin 3s linear infinite; }
+.listener-disc-big.spinning::after { animation:discSpin 3s linear infinite reverse; }
+
+/* ═══════════════════════════════════════════
+   MOBILE BOTTOM PLAYER
+═══════════════════════════════════════════ */
+.mini-player {
+  display:none; position:fixed; bottom:0; left:0; right:0;
+  background:var(--card); border-top:1px solid var(--border);
+  padding:12px 18px 20px; z-index:100;
+  backdrop-filter:blur(20px);
+  box-shadow: 0 -8px 30px rgba(0,0,0,0.3);
+}
+.mini-player-inner { display:flex;align-items:center;gap:12px;max-width:940px;margin:0 auto; }
+.mini-art {
+  width:44px;height:44px;border-radius:9px;background:var(--surface);
+  display:flex;align-items:center;justify-content:center;font-size:1.1rem;overflow:hidden;flex-shrink:0;
+}
+.mini-art img { width:100%;height:100%;object-fit:cover;border-radius:9px; }
+.mini-info { flex:1; overflow:hidden; }
+.mini-title { font-size:0.82rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.mini-artist { font-size:0.65rem;color:var(--text2);margin-top:2px; }
+.mini-controls { display:flex;align-items:center;gap:8px; }
+.mini-btn {
+  width:34px;height:34px;border-radius:50%;border:none;cursor:pointer;font-size:0.85rem;
+  background:var(--surface);color:var(--text2);
+  display:flex;align-items:center;justify-content:center;
+  transition:all var(--transition);
+}
+.mini-btn.play { background:linear-gradient(135deg,var(--gold),var(--rose)); color:#0c0c10; }
+.mini-btn:hover { transform:scale(1.1); }
+.mini-progress { position:absolute;top:0;left:0;right:0;height:2px;background:var(--border); }
+.mini-progress-fill { height:100%;background:linear-gradient(90deg,var(--gold),var(--rose));transition:width 0.4s linear; }
+
+@media(max-width:640px) {
+  .mini-player { display:block; }
+  .app { padding-bottom:100px; }
+}
+
+/* ═══════════════════════════════════════════
+   MISC
+═══════════════════════════════════════════ */
+.divider { height:1px;background:var(--border);margin:16px 0; }
+.stat-row { display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px; }
+.stat-item { flex:1;min-width:80px;text-align:center;background:var(--surface);border-radius:11px;padding:12px 10px;border:1px solid var(--border); }
+.stat-val { font-family:'JetBrains Mono',monospace;font-size:1.4rem;font-weight:700;color:var(--gold); }
+.stat-lbl { font-size:0.58rem;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-top:2px; }
+
+.two-col { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+@media(max-width:500px) { .two-col { grid-template-columns:1fr; } }
+
+.section-header { display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px; }
+
+/* Toast */
 .toast {
-  position:fixed; bottom:28px; right:24px;
-  background:var(--card); border:1px solid var(--border);
-  border-left:3px solid var(--accent);
-  padding:13px 18px; border-radius:12px;
-  font-size:0.8rem; font-weight:500;
-  z-index:999; animation:toastIn 0.3s ease;
-  max-width:300px; pointer-events:none;
+  position:fixed;bottom:28px;right:20px;
+  background:var(--card);border:1px solid var(--border);
+  border-left:3px solid var(--gold);
+  padding:12px 16px;border-radius:11px;
+  font-size:0.78rem;font-weight:600;z-index:9999;
+  animation:toastIn 0.3s ease;max-width:290px;pointer-events:none;
+  box-shadow:var(--shadow);
 }
 @keyframes toastIn { from{transform:translateX(110%);opacity:0} to{transform:translateX(0);opacity:1} }
 
-/* ── STATUS ROW ── */
-.status-row {
-  display:flex; align-items:center; justify-content:space-between;
-  flex-wrap:wrap; gap:12px; margin-bottom:18px;
-}
+/* Password field inline */
+.pass-row { display:flex;gap:8px;align-items:center;margin-top:10px; }
 
-/* ── CONNECTION STEPS ── */
-.conn-step {
-  display:flex; align-items:center; gap:10px;
-  padding:10px 14px; border-radius:10px;
-  background:var(--surface); margin-bottom:8px;
-  font-size:0.78rem; border:1px solid var(--border);
-}
-.conn-step .cs-icon { font-size:1rem; }
-.conn-step.done { border-color:rgba(0,245,212,0.3); }
-.conn-step.done .cs-icon::before { content:'✅'; }
-.conn-step.active-step { border-color:rgba(255,214,10,0.3); }
-.conn-step.err { border-color:rgba(255,77,109,0.3); }
+/* Scrollable panel for chat on desktop */
+.chat-wrapper { position:relative; }
 
-@media(max-width:520px){
-  .logo-text{font-size:2.4rem}
-  .room-code-big{font-size:2.8rem;letter-spacing:8px}
+/* Transfer badge */
+.transfer-btn {
+  font-size:0.65rem;padding:5px 10px;border-radius:7px;
+  background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);
+  color:var(--violet);cursor:pointer;transition:all var(--transition);
+  font-family:'Syne',sans-serif;font-weight:700;
 }
+.transfer-btn:hover { background:rgba(139,92,246,0.2); }
+
+/* Custom room name */
+.custom-name-row { display:flex;gap:8px;align-items:center;margin-top:10px; }
+.custom-name-row .field { font-family:'JetBrains Mono',monospace;letter-spacing:2px;text-transform:uppercase; }
 </style>
 </head>
 <body>
-<div class="blob1"></div>
-<div class="blob2"></div>
+<div class="ambient">
+  <div class="ambient-blob"></div>
+  <div class="ambient-blob"></div>
+  <div class="ambient-blob"></div>
+</div>
+
+<!-- Mini player (mobile) -->
+<div class="mini-player" id="mini-player" style="display:none">
+  <div class="mini-progress"><div class="mini-progress-fill" id="mini-prog" style="width:0%"></div></div>
+  <div class="mini-player-inner">
+    <div class="mini-art" id="mini-art">🎵</div>
+    <div class="mini-info">
+      <div class="mini-title" id="mini-title">Nothing playing</div>
+      <div class="mini-artist" id="mini-artist">Upload a song to start</div>
+    </div>
+    <div class="mini-controls">
+      <button class="mini-btn" onclick="hostPrev()">⏮</button>
+      <button class="mini-btn play" id="mini-play-btn" onclick="togglePlay()">▶</button>
+      <button class="mini-btn" onclick="hostNext()">⏭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast" style="display:none"></div>
+
+<!-- Floating reactions container -->
+<div id="reactions-stage"></div>
+
+<!-- Hidden audio -->
+<audio id="host-audio-el"></audio>
 
 <div class="app">
 
   <!-- HEADER -->
   <div class="header">
-    <div class="logo-wrap">
-      <div class="logo-icon">🎵</div>
-      <div class="logo-text">SyncBeat</div>
+    <div class="logo-group">
+      <div class="logo-mark">🎵</div>
+      <div>
+        <div class="logo-name">SyncBeat</div>
+        <div class="logo-sub">Listen Together · Anywhere</div>
+      </div>
     </div>
-    <div class="tagline">Stream · Sync · Listen — Anywhere on Earth</div>
-    <div><span class="global-badge"><span class="dot"></span> Global P2P • No WiFi Required</span></div>
+    <div class="header-actions">
+      <button class="theme-toggle" onclick="toggleTheme()" id="theme-btn" title="Toggle theme">🌙</button>
+    </div>
   </div>
 
   <!-- TABS -->
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('host')">🎛 Host</button>
     <button class="tab-btn" onclick="switchTab('join')">📡 Join</button>
-    <button class="tab-btn" onclick="switchTab('how')">💡 Guide</button>
+    <button class="tab-btn" onclick="switchTab('guide')">💡 Guide</button>
   </div>
 
-  <!-- ══ HOST PANEL ══ -->
+  <!-- ══════════════════════════════
+       HOST PANEL
+  ══════════════════════════════ -->
   <div id="panel-host" class="panel active">
 
-    <!-- Step 1: Setup -->
-    <div class="card" id="host-setup">
+    <!-- Setup -->
+    <div class="card" id="host-setup-card">
       <div class="card-label">🏠 Create Your Room</div>
-      <p style="color:var(--muted);font-size:0.8rem;margin-bottom:18px;">
-        You'll get a shareable code. Friends anywhere in the world paste it to connect and hear your music live.
-      </p>
-      <div class="field-group">
-        <input class="field" id="host-name-input" placeholder="Your DJ name..." maxlength="20">
-        <button class="btn btn-prime" onclick="hostCreate()">🚀 Create Room</button>
+      <div class="field-row" style="margin-bottom:10px">
+        <input class="field" id="host-name-input" placeholder="Your DJ name..." maxlength="20" style="flex:1">
       </div>
-      <div id="host-connecting" style="display:none;margin-top:14px">
-        <div class="conn-step active-step" id="cs1"><span class="cs-icon">⏳</span><span>Connecting to P2P network...</span></div>
-        <div class="conn-step" id="cs2"><span class="cs-icon">⏳</span><span>Generating room code...</span></div>
-        <div class="conn-step" id="cs3"><span class="cs-icon">⏳</span><span>Ready to accept listeners</span></div>
+      <!-- Custom room name -->
+      <div class="custom-name-row">
+        <span style="font-size:0.7rem;color:var(--text2);white-space:nowrap">Custom code:</span>
+        <input class="field custom-name-row" id="custom-code-input" placeholder="MYROOM (optional)" maxlength="8" style="flex:1;font-family:'JetBrains Mono',monospace;letter-spacing:2px;text-transform:uppercase;padding:9px 14px;font-size:0.85rem">
+      </div>
+      <!-- Password -->
+      <div class="pass-row">
+        <span style="font-size:0.7rem;color:var(--text2);white-space:nowrap">Password (optional):</span>
+        <input class="field" id="host-password" placeholder="Leave blank = open room" maxlength="20" type="password" style="flex:1;padding:9px 14px;font-size:0.82rem">
+      </div>
+      <div style="margin-top:14px">
+        <button class="btn btn-prime" onclick="hostCreate()" style="width:100%">🚀 Create Room</button>
+      </div>
+      <div class="conn-steps" id="host-conn-steps" style="display:none">
+        <div class="conn-step" id="cs1"><span>⏳</span><span>Connecting to P2P network...</span></div>
+        <div class="conn-step" id="cs2"><span>⏳</span><span>Generating room code...</span></div>
+        <div class="conn-step" id="cs3"><span>⏳</span><span>Ready for listeners</span></div>
       </div>
     </div>
 
-    <!-- Active Host UI -->
-    <div id="host-room" style="display:none">
+    <!-- Active room -->
+    <div id="host-room-ui" style="display:none">
 
-      <div class="card">
-        <div class="status-row">
-          <div>
-            <div class="card-label" style="margin-bottom:6px">📡 Room Live</div>
-            <span class="badge badge-live" id="host-status-badge"><span class="dot pulse"></span> Active</span>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:0.65rem;color:var(--muted);margin-bottom:2px">LISTENERS</div>
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:2rem;color:var(--cyan)" id="host-listener-count">0</div>
-          </div>
+      <!-- Stats row -->
+      <div class="stat-row">
+        <div class="stat-item">
+          <div class="stat-val" id="stat-listeners">0</div>
+          <div class="stat-lbl">Listeners</div>
         </div>
+        <div class="stat-item">
+          <div class="stat-val" id="stat-queue">0</div>
+          <div class="stat-lbl">In Queue</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-val" id="stat-time">—</div>
+          <div class="stat-lbl">Playing</div>
+        </div>
+      </div>
 
+      <!-- Room code -->
+      <div class="card">
+        <div class="section-header">
+          <div class="card-label" style="margin-bottom:0">📡 Room Active</div>
+          <span class="badge badge-live" id="host-status-badge"><span class="dot pulse"></span> Live</span>
+        </div>
         <div class="room-hero">
-          <div style="font-size:0.65rem;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-bottom:4px">Your Room Code</div>
+          <div style="font-size:0.6rem;letter-spacing:3px;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Room Code</div>
           <div class="room-code-big" id="host-code-display">——</div>
-          <div class="room-hint">Share this code with anyone — anywhere in the world</div>
+          <div class="room-hint">Share this with friends anywhere in the world</div>
           <div class="copy-row">
-            <button class="btn btn-cyan btn-sm" onclick="copyCode()">📋 Copy Code</button>
-            <button class="btn btn-outline btn-sm" onclick="shareRoom()">🔗 Share Link</button>
+            <button class="btn btn-teal btn-sm" onclick="copyCode()">📋 Copy Code</button>
+            <button class="btn btn-ghost btn-sm" onclick="shareRoom()">🔗 Share Link</button>
+            <button class="btn btn-ghost btn-sm" onclick="showShareCard()">🖼 Share Card</button>
           </div>
         </div>
       </div>
 
-      <!-- Upload -->
-      <div class="card">
-        <div class="card-label">🎵 Music</div>
-        <div class="upload-zone" id="upload-zone">
-          <input type="file" id="music-input" accept="audio/*" onchange="trackLoaded(this)">
-          <div class="upload-icon-big">🎶</div>
-          <div class="upload-label">Drop audio here or <strong>click to browse</strong></div>
-          <div style="color:var(--muted);font-size:0.65rem;margin-top:4px">MP3 · WAV · OGG · M4A</div>
-        </div>
+      <!-- Player -->
+      <div class="player-card" id="host-player-card">
+        <div class="player-art-strip paused" id="host-art-strip"></div>
+        <div class="player-body">
+          <div class="card-label">🎵 Now Playing</div>
 
-        <div id="now-playing" style="display:none">
-          <div class="now-playing">
-            <div class="disc" id="host-disc">🎵</div>
-            <div class="track-details">
-              <div class="track-title" id="host-track-name">—</div>
-              <div class="track-sub" id="host-track-sub">—</div>
-            </div>
-            <div class="wave stopped" id="host-wave"></div>
+          <!-- Upload zone shown when queue empty -->
+          <div class="upload-zone" id="upload-zone">
+            <input type="file" id="music-input" accept="audio/*" multiple onchange="filesAdded(this)">
+            <div class="upload-icon">🎶</div>
+            <div class="upload-text">Drop songs here or <strong>click to browse</strong></div>
+            <div style="color:var(--text3);font-size:0.62rem;margin-top:4px">MP3 · WAV · OGG · M4A — multiple files OK</div>
           </div>
 
-          <div class="controls-wrap">
-            <div class="seek-wrap" id="seek-bar" onclick="hostSeek(event)">
-              <div class="seek-fill" id="seek-fill" style="width:0%"></div>
+          <!-- Track display -->
+          <div class="player-top" id="host-track-display" style="display:none">
+            <div class="album-art" id="host-album-art">
+              <span id="host-art-emoji">🎵</span>
+              <img id="host-art-img" style="display:none;position:absolute;inset:0" alt="">
+              <div class="disc-hole"></div>
             </div>
-            <div class="times">
+            <div class="track-info-col">
+              <div class="track-title" id="host-track-title">—</div>
+              <div class="track-artist" id="host-track-artist">Unknown Artist</div>
+              <div class="track-album" id="host-track-album"></div>
+            </div>
+            <div class="eq-bars paused" id="host-eq"></div>
+          </div>
+
+          <!-- Progress -->
+          <div id="host-controls" style="display:none">
+            <div class="progress-wrap" id="seek-bar" onclick="hostSeek(event)">
+              <div class="progress-fill" id="seek-fill" style="width:0%"></div>
+            </div>
+            <div class="time-row">
               <span id="t-curr">0:00</span>
               <span id="t-total">0:00</span>
             </div>
+            <!-- Controls -->
             <div class="ctrl-row">
-              <button class="ctrl-btn" onclick="audioRestart()" title="Restart">⏮</button>
-              <button class="ctrl-btn play-pause" id="play-btn" onclick="togglePlay()">▶</button>
-              <button class="ctrl-btn" onclick="audioSkip(10)" title="+10s">⏭</button>
-              <div style="flex:1"></div>
-              <span style="font-size:0.7rem;color:var(--muted)" id="sync-status-text">—</span>
+              <button class="ctrl-btn" id="btn-shuffle" onclick="toggleShuffle()" title="Shuffle">🔀</button>
+              <button class="ctrl-btn" onclick="hostPrev()" title="Previous">⏮</button>
+              <button class="ctrl-btn play-main" id="play-btn" onclick="togglePlay()">▶</button>
+              <button class="ctrl-btn" onclick="hostNext()" title="Next">⏭</button>
+              <button class="ctrl-btn" id="btn-loop" onclick="toggleLoop()" title="Loop">🔁</button>
             </div>
+            <!-- Volume -->
             <div class="vol-row">
-              <span>🔈</span>
-              <input type="range" id="host-vol" min="0" max="1" step="0.02" value="0.8" oninput="hostAudio.volume=this.value">
-              <span>🔊</span>
+              <span style="font-size:0.85rem">🔈</span>
+              <input type="range" id="host-vol" min="0" max="1" step="0.02" value="0.8" oninput="hostAudioEl.volume=this.value">
+              <span style="font-size:0.85rem">🔊</span>
+            </div>
+            <div style="text-align:center;margin-top:8px">
+              <span style="font-size:0.65rem;color:var(--text3)" id="sync-status-text">—</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Queue -->
+      <div class="card">
+        <div class="section-header">
+          <div class="card-label" style="margin-bottom:0">📋 Queue</div>
+          <div style="display:flex;gap:6px">
+            <label class="btn btn-ghost btn-xs" style="cursor:pointer">
+              + Add Songs
+              <input type="file" accept="audio/*" multiple onchange="filesAdded(this)" style="display:none">
+            </label>
+            <button class="btn btn-ghost btn-xs" onclick="clearQueue()">Clear</button>
+          </div>
+        </div>
+        <div class="queue-list" id="host-queue-list">
+          <div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:16px">Queue is empty — upload songs above</div>
         </div>
       </div>
 
       <!-- Listeners -->
       <div class="card">
-        <div class="status-row">
-          <div class="card-label" style="margin-bottom:0">👥 Connected Listeners</div>
-          <span class="badge badge-idle" id="listeners-status">Waiting...</span>
+        <div class="section-header">
+          <div class="card-label" style="margin-bottom:0">👥 Listeners</div>
+          <span class="badge badge-idle" id="listeners-badge">Waiting</span>
         </div>
-        <div class="l-grid" id="listeners-grid">
-          <div style="color:var(--muted);font-size:0.75rem;grid-column:1/-1;padding:16px 0;text-align:center;">
-            No listeners yet. Share your room code! 👆
+        <div class="listeners-grid" id="host-listeners-grid">
+          <div style="color:var(--text3);font-size:0.75rem;grid-column:1/-1;text-align:center;padding:12px">
+            Share the code to invite friends 👆
           </div>
+        </div>
+      </div>
+
+      <!-- Chat -->
+      <div class="card">
+        <div class="card-label">💬 Live Chat</div>
+        <div class="chat-panel">
+          <div class="chat-messages" id="host-chat-messages"></div>
+          <div class="chat-input-row">
+            <input class="chat-input" id="host-chat-input" placeholder="Say something..." maxlength="200"
+              onkeydown="if(event.key==='Enter')sendChat('host')">
+            <button class="chat-send" onclick="sendChat('host')">➤</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reactions -->
+      <div class="card">
+        <div class="card-label">🎉 Send Reaction</div>
+        <div class="reaction-btns">
+          <button class="reaction-btn" onclick="sendReaction('🔥')">🔥</button>
+          <button class="reaction-btn" onclick="sendReaction('❤️')">❤️</button>
+          <button class="reaction-btn" onclick="sendReaction('😂')">😂</button>
+          <button class="reaction-btn" onclick="sendReaction('🎵')">🎵</button>
+          <button class="reaction-btn" onclick="sendReaction('👏')">👏</button>
+          <button class="reaction-btn" onclick="sendReaction('🤩')">🤩</button>
+          <button class="reaction-btn" onclick="sendReaction('💯')">💯</button>
+          <button class="reaction-btn" onclick="sendReaction('🎸')">🎸</button>
         </div>
       </div>
 
     </div>
   </div>
 
-  <!-- ══ JOIN PANEL ══ -->
+  <!-- ══════════════════════════════
+       JOIN PANEL
+  ══════════════════════════════ -->
   <div id="panel-join" class="panel">
 
     <div class="card" id="join-form-card">
       <div class="card-label">📡 Join a Room</div>
-      <p style="color:var(--muted);font-size:0.8rem;margin-bottom:20px;">
-        Get the code from your friend (host) and enter it below. You'll hear their music live — no matter where you are.
+      <p style="color:var(--text2);font-size:0.78rem;margin-bottom:18px;line-height:1.6">
+        Enter the room code from your friend. You'll receive the music and hear it in perfect sync.
       </p>
-      <div class="field-group" style="flex-direction:column">
+      <div style="display:flex;flex-direction:column;gap:10px">
         <input class="field" id="join-name-input" placeholder="Your name..." maxlength="20">
-        <input class="field code-field" id="join-code-input" placeholder="ROOM CODE" maxlength="8">
+        <input class="field field-code" id="join-code-input" placeholder="ROOM CODE" maxlength="8">
+        <input class="field" id="join-password" placeholder="Password (if required)" type="password" style="font-size:0.85rem">
         <button class="btn btn-prime" onclick="joinRoom()" style="width:100%">🎧 Join & Listen</button>
       </div>
-      <div id="join-connecting" style="display:none;margin-top:14px">
-        <div class="conn-step active-step" id="jc1"><span class="cs-icon">⏳</span><span>Connecting to P2P network...</span></div>
-        <div class="conn-step" id="jc2"><span class="cs-icon">⏳</span><span>Finding host room...</span></div>
-        <div class="conn-step" id="jc3"><span class="cs-icon">⏳</span><span>Establishing audio stream...</span></div>
+      <div class="conn-steps" id="join-conn-steps" style="display:none">
+        <div class="conn-step" id="jc1"><span>⏳</span><span>Connecting to network...</span></div>
+        <div class="conn-step" id="jc2"><span>⏳</span><span>Finding room...</span></div>
+        <div class="conn-step" id="jc3"><span>⏳</span><span>Receiving music...</span></div>
       </div>
     </div>
 
-    <!-- Listener Active -->
-    <div id="listener-room" style="display:none">
+    <!-- Listener active UI -->
+    <div id="listener-room-ui" style="display:none">
 
+      <!-- Hero -->
       <div class="listener-hero">
-        <div class="big-disc" id="listener-disc">🎵</div>
-        <div class="listener-title" id="listener-track-name">Waiting for host...</div>
-        <div class="listener-sub" id="listener-track-sub">Stand by • Host will start music soon</div>
-        <div style="margin-top:16px">
-          <span class="badge badge-live" id="listener-badge"><span class="dot pulse"></span> Connected</span>
+        <div class="listener-disc-big" id="listener-disc">🎵</div>
+        <div style="font-size:1.3rem;font-weight:800" id="listener-song-title">Waiting for host...</div>
+        <div style="color:var(--text2);font-size:0.75rem;margin-top:4px" id="listener-song-artist">Stand by</div>
+        <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+          <span class="badge badge-live" id="listener-status-badge"><span class="dot pulse"></span> Connected</span>
+          <span class="badge badge-idle" id="listener-room-badge">——</span>
         </div>
-      </div>
-
-      <div class="card">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px">
-          <div>
-            <div style="font-size:0.65rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase">Room</div>
-            <div style="font-family:'Bebas Neue',sans-serif;font-size:1.4rem;letter-spacing:5px;color:var(--cyan)" id="listener-room-code">——</div>
+        <!-- Listener progress bar -->
+        <div style="margin-top:18px;padding:0 10px">
+          <div class="progress-wrap" style="cursor:default;height:3px">
+            <div class="progress-fill" id="listener-progress" style="width:0%"></div>
           </div>
-          <div style="text-align:right">
-            <div style="font-size:0.65rem;color:var(--muted);letter-spacing:2px;text-transform:uppercase">Host</div>
-            <div style="font-weight:700" id="listener-host-name">—</div>
+          <div class="time-row" style="margin-top:4px">
+            <span id="listener-t-curr">0:00</span>
+            <span id="listener-t-total">0:00</span>
           </div>
-          <button class="btn btn-danger btn-sm" onclick="leaveRoom()">Leave</button>
         </div>
-
-        <div class="wave stopped" id="listener-wave" style="margin-bottom:16px"></div>
-
-        <div class="vol-row">
+        <!-- Listener volume -->
+        <div class="vol-row" style="margin-top:14px;padding:0 10px">
           <span>🔈</span>
           <input type="range" id="listener-vol" min="0" max="1" step="0.02" value="0.8" oninput="setListenerVol(this.value)">
           <span>🔊</span>
         </div>
+      </div>
 
-        <div class="signal-bar" id="signal-bar" style="display:none">
-          <div class="signal-icon">📶</div>
-          <div class="signal-text" id="signal-text"><strong>Syncing...</strong></div>
+      <!-- Queue visible to listener (with voting) -->
+      <div class="card">
+        <div class="section-header">
+          <div class="card-label" style="margin-bottom:0">📋 Up Next <span style="color:var(--text3);font-weight:400;font-size:0.6rem;margin-left:4px">— vote for next song</span></div>
+          <span class="badge badge-idle" id="listener-host-badge">Host: —</span>
+        </div>
+        <div class="queue-list" id="listener-queue-list">
+          <div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:12px">Waiting for host's queue...</div>
         </div>
       </div>
 
+      <!-- Chat -->
+      <div class="card">
+        <div class="card-label">💬 Live Chat</div>
+        <div class="chat-panel">
+          <div class="chat-messages" id="listener-chat-messages"></div>
+          <div class="chat-input-row">
+            <input class="chat-input" id="listener-chat-input" placeholder="Say something..." maxlength="200"
+              onkeydown="if(event.key==='Enter')sendChat('listener')">
+            <button class="chat-send" onclick="sendChat('listener')">➤</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reactions -->
+      <div class="card">
+        <div class="card-label">🎉 React</div>
+        <div class="reaction-btns">
+          <button class="reaction-btn" onclick="listenerReact('🔥')">🔥</button>
+          <button class="reaction-btn" onclick="listenerReact('❤️')">❤️</button>
+          <button class="reaction-btn" onclick="listenerReact('😂')">😂</button>
+          <button class="reaction-btn" onclick="listenerReact('🎵')">🎵</button>
+          <button class="reaction-btn" onclick="listenerReact('👏')">👏</button>
+          <button class="reaction-btn" onclick="listenerReact('🤩')">🤩</button>
+          <button class="reaction-btn" onclick="listenerReact('💯')">💯</button>
+          <button class="reaction-btn" onclick="listenerReact('🎸')">🎸</button>
+        </div>
+      </div>
+
+      <button class="btn btn-rose" onclick="leaveRoom()" style="width:100%">👋 Leave Room</button>
     </div>
+
   </div>
 
-  <!-- ══ HOW PANEL ══ -->
-  <div id="panel-how" class="panel">
+  <!-- ══════════════════════════════
+       GUIDE PANEL
+  ══════════════════════════════ -->
+  <div id="panel-guide" class="panel">
     <div class="card">
-      <div class="card-label">💡 How to Use SyncBeat Global</div>
-      <div class="how-grid">
-        <div class="how-step">
-          <div class="step-circle">1</div>
-          <div class="step-h">Host Opens App</div>
-          <div class="step-p">Go to "Host" tab, enter a name, click Create Room.</div>
+      <div class="card-label">💡 How to Use SyncBeat</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-top:4px">
+        <div style="background:var(--surface);border-radius:12px;padding:18px;border:1px solid var(--border)">
+          <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--rose));color:#000;display:flex;align-items:center;justify-content:center;font-weight:800;margin-bottom:10px">1</div>
+          <div style="font-weight:700;margin-bottom:6px">Host Creates Room</div>
+          <div style="color:var(--text2);font-size:0.72rem;line-height:1.6">Enter your name, optionally set a custom code or password, and click Create Room.</div>
         </div>
-        <div class="how-step">
-          <div class="step-circle">2</div>
-          <div class="step-h">Share the Code</div>
-          <div class="step-p">Copy the 6-char code or share link to friends via WhatsApp, SMS, etc.</div>
+        <div style="background:var(--surface);border-radius:12px;padding:18px;border:1px solid var(--border)">
+          <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--rose));color:#000;display:flex;align-items:center;justify-content:center;font-weight:800;margin-bottom:10px">2</div>
+          <div style="font-weight:700;margin-bottom:6px">Share the Code</div>
+          <div style="color:var(--text2);font-size:0.72rem;line-height:1.6">Copy the 6-char code or share the link. Friends join from anywhere in the world.</div>
         </div>
-        <div class="how-step">
-          <div class="step-circle">3</div>
-          <div class="step-h">Friends Join</div>
-          <div class="step-p">They open this page, go to "Join" tab, enter name + code.</div>
+        <div style="background:var(--surface);border-radius:12px;padding:18px;border:1px solid var(--border)">
+          <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--rose));color:#000;display:flex;align-items:center;justify-content:center;font-weight:800;margin-bottom:10px">3</div>
+          <div style="font-weight:700;margin-bottom:6px">Upload Music</div>
+          <div style="color:var(--text2);font-size:0.72rem;line-height:1.6">Host uploads one or multiple songs. They're sent directly to all listeners' devices.</div>
         </div>
-        <div class="how-step">
-          <div class="step-circle">4</div>
-          <div class="step-h">Play Music!</div>
-          <div class="step-p">Host uploads a song and hits play. Everyone hears it live in sync.</div>
+        <div style="background:var(--surface);border-radius:12px;padding:18px;border:1px solid var(--border)">
+          <div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--rose));color:#000;display:flex;align-items:center;justify-content:center;font-weight:800;margin-bottom:10px">4</div>
+          <div style="font-weight:700;margin-bottom:6px">Listen Together</div>
+          <div style="color:var(--text2);font-size:0.72rem;line-height:1.6">Hit play — everyone hears it in sync with latency compensation. Chat and react live!</div>
         </div>
       </div>
-
-      <div class="tech-box">
-        <strong>🌐 How cross-network streaming works:</strong><br><br>
-        This app uses <strong>WebRTC (via PeerJS)</strong> — the same technology that powers video calls (Zoom, Google Meet). When the host plays music, the audio stream is sent directly peer-to-peer to each listener's device across the internet. No server needed to relay the audio. PeerJS provides a free public signaling server to help devices find each other.<br><br>
-        <strong>Requirements:</strong> Both host and listeners need a modern browser (Chrome, Firefox, Edge, Safari 15+). Works on phones, laptops, and desktops — anywhere in the world with an internet connection.
+      <div style="background:var(--surface);border-radius:11px;padding:16px;margin-top:16px;border-left:3px solid var(--gold);font-size:0.76rem;color:var(--text2);line-height:1.7">
+        <strong style="color:var(--text)">⚡ Technology:</strong> Uses WebRTC (PeerJS) to send audio files peer-to-peer. No audio data passes through any server — it goes directly from host to listener. Latency compensation measures your network delay and auto-corrects sync within ~50-150ms. <br><br>
+        <strong style="color:var(--text)">📋 Features:</strong> Queue with shuffle/loop, album art from ID3 tags, live chat, floating reactions, song voting, listener latency display, password-protected rooms, custom room codes, and a shareable "Now Listening" card.
       </div>
     </div>
   </div>
 
+</div><!-- /app -->
+
+<!-- Share Card Modal -->
+<div id="share-modal" style="display:none;position:fixed;inset:0;z-index:998;background:rgba(0,0,0,0.8);display:none;align-items:center;justify-content:center;padding:20px">
+  <div style="max-width:380px;width:100%">
+    <div class="share-card" id="share-card-preview">
+      <div class="share-card-inner">
+        <div class="share-card-logo">🎵 SyncBeat</div>
+        <div style="color:#666;font-size:0.6rem;letter-spacing:2px;text-transform:uppercase">Now Listening</div>
+        <div class="share-card-song" id="sc-song">—</div>
+        <div class="share-card-artist" id="sc-artist">—</div>
+        <div class="share-card-code" id="sc-code">——</div>
+        <div class="share-card-hint">Join at your site · Enter code above</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button class="btn btn-prime" style="flex:1" onclick="downloadShareCard()">📸 Save Image</button>
+      <button class="btn btn-ghost" onclick="closeShareCard()">✕ Close</button>
+    </div>
+  </div>
 </div>
 
-<!-- Toast -->
-<div class="toast" id="toast" style="display:none"></div>
-
-<audio id="host-audio-el"></audio>
-
 <script>
-// ══════════════════════════════════════════════════════════════
-//  SyncBeat Global — Fixed Audio Streaming
-//  Strategy: Send entire audio file as ArrayBuffer chunks over
-//  PeerJS data channel → listener reassembles → plays as blob URL
-//  This avoids ALL MediaStream/AudioContext browser restriction issues
-// ══════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+//  SYNCBEAT ULTIMATE — Complete Implementation
+// ═══════════════════════════════════════════════════════════════
 
-// ── Globals ──
+// ── State ──
 let myPeer = null;
-let hostAudio = document.getElementById('host-audio-el');
-let activeConns = {};      // peerId -> { conn, name }
+let hostAudioEl = document.getElementById('host-audio-el');
+let activeConns = {};        // peerId -> { conn, name, latency }
 let roomCode_ = '';
 let hostName_ = '';
+let roomPassword_ = '';
 let isPlaying = false;
-let trackLoaded_ = false;
-let trackFile_ = null;     // the raw File object on host side
-let trackMeta_ = {};       // { name, size, type }
+let loopMode = false;
+let shuffleMode = false;
 
-// Listener side
+// Queue
+let queue = [];              // [ { file, name, artist, album, artUrl, artBlob } ]
+let currentTrack = -1;
+
+// Latency
+const peerLatency = {};
+const pingTimers = {};
+
+// Listener state
 let listenerConn = null;
 let listenerAudio = null;
+let listenerQueue = [];
+let listenerCurrentTrack = -1;
+let listenerHostName = '';
 let receivedChunks = [];
 let expectedSize = 0;
 let receivedSize = 0;
+let myVotes = new Set();
+let autoReconnectTimer = null;
+let lastJoinCode = '';
+let lastJoinName = '';
+let lastJoinPass = '';
 
-const CHUNK = 32768; // 32KB per chunk — reliable for PeerJS
-const COLORS = ['#6c63ff','#ff4d6d','#00f5d4','#ffd60a','#a78bfa','#f97316'];
+const CHUNK = 32768;
+const COLORS = ['#f5c842','#ff4d72','#00e5c8','#8b5cf6','#22c55e','#f97316','#06b6d4','#ec4899'];
 
-// Latency compensation
-const peerLatency = {};    // peerId -> one-way latency in seconds
-const pingTimers = {};     // peerId -> pending ping timestamp
-const PING_INTERVAL = 4000;
-let listenerLatency = 0;   // measured latency on listener side (seconds)
-
-// ── Utilities ──
+// ── Utils ──
 function toast(msg, dur=3500) {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -787,144 +1119,440 @@ function fmt(s) {
   return `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 }
 function switchTab(t) {
-  ['host','join','how'].forEach((x,i) => {
+  ['host','join','guide'].forEach((x,i) => {
     document.querySelectorAll('.tab-btn')[i].classList.toggle('active', x===t);
     document.getElementById('panel-'+x).classList.toggle('active', x===t);
   });
-}
-function buildWave(id, count=22) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.innerHTML = '';
-  for (let i=0;i<count;i++) {
-    const b = document.createElement('div');
-    b.className = 'wbar';
-    b.style.height = (22+Math.random()*78)+'%';
-    b.style.animationDelay = (Math.random()*0.6)+'s';
-    el.appendChild(b);
-  }
-}
-function connStep(id, state) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.className = 'conn-step '+(state==='done'?'done':state==='active'?'active-step':state==='err'?'err':'');
-  const icon = el.querySelector('.cs-icon');
-  if (icon) icon.textContent = state==='done'?'✅':state==='err'?'❌':'⏳';
 }
 function genCode() {
   const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   return Array.from({length:6},()=>c[Math.floor(Math.random()*c.length)]).join('');
 }
-function genShort() { return Math.random().toString(36).slice(2,8); }
+function genShort() { return Math.random().toString(36).slice(2,10); }
 function sleep(ms) { return new Promise(r=>setTimeout(r,ms)); }
+function connStep(id, state) {
+  const el=document.getElementById(id); if(!el)return;
+  el.className='conn-step '+(state==='done'?'done':state==='active'?'active':state==='err'?'err':'');
+  el.querySelector('span').textContent = state==='done'?'✅':state==='err'?'❌':'⏳';
+}
 
-// ── PeerJS init ──
+// ── Theme ──
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme')==='dark';
+  html.setAttribute('data-theme', isDark?'light':'dark');
+  document.getElementById('theme-btn').textContent = isDark?'🌙':'☀️';
+  localStorage.setItem('sb-theme', isDark?'light':'dark');
+}
+(function initTheme() {
+  const saved = localStorage.getItem('sb-theme');
+  if (saved) {
+    document.documentElement.setAttribute('data-theme', saved);
+    document.getElementById('theme-btn').textContent = saved==='dark'?'🌙':'☀️';
+  }
+})();
+
+// ── Build EQ bars ──
+function buildEQ(id, count=12) {
+  const el=document.getElementById(id); if(!el)return;
+  el.innerHTML='';
+  for(let i=0;i<count;i++){
+    const b=document.createElement('div');
+    b.className='eq-bar';
+    b.style.height=(20+Math.random()*80)+'%';
+    b.style.animationDelay=(Math.random()*0.5)+'s';
+    el.appendChild(b);
+  }
+}
+function buildSmallEQ(id, count=7) {
+  const el=document.getElementById(id); if(!el)return;
+  el.innerHTML='';
+  for(let i=0;i<count;i++){
+    const b=document.createElement('div');
+    b.className='l-eq-bar';
+    b.style.height=(20+Math.random()*80)+'%';
+    b.style.animationDelay=(Math.random()*0.4)+'s';
+    el.appendChild(b);
+  }
+}
+
+// ── PeerJS ──
 function initPeer(id) {
   return new Promise((resolve, reject) => {
     const peer = new Peer(id, {
       debug: 0,
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' },
-          { urls: 'stun:stun2.l.google.com:19302' },
-          { urls: 'stun:global.stun.twilio.com:3478' }
-        ]
-      }
+      config: { iceServers: [
+        { urls:'stun:stun.l.google.com:19302' },
+        { urls:'stun:stun1.l.google.com:19302' },
+        { urls:'stun:stun2.l.google.com:19302' },
+        { urls:'stun:global.stun.twilio.com:3478' }
+      ]}
     });
     peer.on('open', pid => resolve({ peer, pid }));
     peer.on('error', err => reject(err));
-    setTimeout(() => reject(new Error('timeout')), 15000);
+    setTimeout(()=>reject(new Error('timeout')), 15000);
   });
 }
 
-// ══════════════════════
-//  HOST SIDE
-// ══════════════════════
-
-async function hostCreate() {
-  const name = document.getElementById('host-name-input').value.trim();
-  if (!name) { toast('⚠️ Enter your DJ name first'); return; }
-
-  hostName_ = name;
-  document.getElementById('host-setup').querySelector('button').disabled = true;
-  document.getElementById('host-connecting').style.display = 'block';
-  connStep('cs1','active');
-
+// ══════════════════════════════════════════
+//  ID3 TAG READER
+// ══════════════════════════════════════════
+async function readID3(file) {
+  const meta = { title: file.name.replace(/\.[^.]+$/,''), artist:'', album:'', artBlob:null, artUrl:null };
   try {
-    const code = genCode();
-    roomCode_ = code;
-    connStep('cs1','done'); connStep('cs2','active');
+    const buf = await file.arrayBuffer();
+    const view = new Uint8Array(buf);
+    if (view[0]!==0x49||view[1]!==0x44||view[2]!==0x33) return meta;
+    let pos = 10;
+    const end = Math.min(buf.byteLength, 500000);
+    while (pos < end - 10) {
+      const frameId = String.fromCharCode(view[pos],view[pos+1],view[pos+2],view[pos+3]);
+      const size = (view[pos+4]<<24)|(view[pos+5]<<16)|(view[pos+6]<<8)|view[pos+7];
+      if (size <= 0 || size > end) break;
+      const data = buf.slice(pos+10, pos+10+size);
+      const dv = new Uint8Array(data);
+      if (frameId==='TIT2'||frameId==='TPE1'||frameId==='TALB') {
+        const enc = dv[0];
+        let str='';
+        if(enc===0||enc===3) str=new TextDecoder('utf-8').decode(data.slice(1));
+        else if(enc===1||enc===2) str=new TextDecoder('utf-16').decode(data.slice(1));
+        str=str.replace(/\0/g,'').trim();
+        if(frameId==='TIT2')meta.title=str||meta.title;
+        if(frameId==='TPE1')meta.artist=str;
+        if(frameId==='TALB')meta.album=str;
+      }
+      if (frameId==='APIC') {
+        let i=1;
+        while(i<dv.length&&dv[i]!==0)i++;
+        i++;
+        i++;
+        while(i<dv.length&&dv[i]!==0)i++;
+        i++;
+        const imgData = data.slice(i);
+        meta.artBlob = new Blob([imgData], {type:'image/jpeg'});
+        meta.artUrl = URL.createObjectURL(meta.artBlob);
+      }
+      pos += 10 + size;
+    }
+  } catch(e) {}
+  return meta;
+}
 
-    const { peer } = await initPeer('syncbeat-host-'+code);
-    myPeer = peer;
-    connStep('cs2','done'); connStep('cs3','active');
+// ══════════════════════════════════════════
+//  FILE LOADING & QUEUE
+// ══════════════════════════════════════════
+async function filesAdded(input) {
+  const files = Array.from(input.files);
+  if (!files.length) return;
+  for (const file of files) {
+    if (!file.type.startsWith('audio/')) continue;
+    const meta = await readID3(file);
+    queue.push({ file, ...meta });
+  }
+  renderHostQueue();
+  document.getElementById('stat-queue').textContent = queue.length;
+  if (currentTrack === -1) loadTrack(0);
+  toast(`✅ Added ${files.length} song${files.length>1?'s':''} to queue`);
+  input.value='';
+}
 
-    peer.on('connection', onListenerConnect);
-    connStep('cs3','done');
+function loadTrack(index) {
+  if (index < 0 || index >= queue.length) return;
+  currentTrack = index;
+  const t = queue[index];
 
-    await sleep(300);
-    document.getElementById('host-setup').style.display = 'none';
-    document.getElementById('host-room').style.display = 'block';
-    document.getElementById('host-code-display').textContent = code;
-    buildWave('host-wave');
-    toast(`🎉 Room "${code}" created! Share the code.`);
+  hostAudioEl.src = URL.createObjectURL(t.file);
+  hostAudioEl.load();
 
-  } catch(e) {
-    connStep('cs1','err');
-    toast('❌ Connection failed. Try again.');
-    document.getElementById('host-setup').querySelector('button').disabled = false;
+  // UI
+  document.getElementById('upload-zone').style.display = 'none';
+  document.getElementById('host-track-display').style.display = 'flex';
+  document.getElementById('host-controls').style.display = 'block';
+  document.getElementById('host-track-title').textContent = t.title;
+  document.getElementById('host-track-artist').textContent = t.artist || 'Unknown Artist';
+  document.getElementById('host-track-album').textContent = t.album || '';
+
+  // Album art
+  const img = document.getElementById('host-art-img');
+  const emoji = document.getElementById('host-art-emoji');
+  if (t.artUrl) { img.src=t.artUrl; img.style.display='block'; emoji.style.display='none'; }
+  else          { img.style.display='none'; emoji.style.display='block'; }
+
+  const miniArt = document.getElementById('mini-art');
+  if (t.artUrl) { miniArt.innerHTML=`<img src="${t.artUrl}" style="width:44px;height:44px;border-radius:9px;object-fit:cover">`; }
+  else          { miniArt.textContent='🎵'; }
+
+  document.getElementById('mini-title').textContent = t.title;
+  document.getElementById('mini-artist').textContent = t.artist || 'Unknown Artist';
+  document.getElementById('mini-player').style.display = 'block';
+
+  buildEQ('host-eq');
+  renderHostQueue();
+  updateStatTime();
+
+  hostAudioEl.onloadedmetadata = () => {
+    document.getElementById('t-total').textContent = fmt(hostAudioEl.duration);
+  };
+  hostAudioEl.ontimeupdate = () => {
+    if (!hostAudioEl.duration) return;
+    const p = hostAudioEl.currentTime/hostAudioEl.duration*100;
+    document.getElementById('seek-fill').style.width = p+'%';
+    document.getElementById('mini-prog').style.width = p+'%';
+    document.getElementById('t-curr').textContent = fmt(hostAudioEl.currentTime);
+    updateStatTime();
+    // Periodic sync every 8s
+    if (Math.floor(hostAudioEl.currentTime) % 8 === 0 && isPlaying) {
+      broadcastSmall({ type:'seek', position:hostAudioEl.currentTime });
+    }
+  };
+  hostAudioEl.onended = () => {
+    if (loopMode) { hostAudioEl.play(); }
+    else hostNext();
+  };
+
+  // Send to all connected listeners
+  broadcastFileAll(index);
+}
+
+function renderHostQueue() {
+  const list = document.getElementById('host-queue-list');
+  if (!queue.length) {
+    list.innerHTML='<div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:16px">Queue is empty — upload songs above</div>';
+    return;
+  }
+  list.innerHTML='';
+  queue.forEach((t, i) => {
+    const div = document.createElement('div');
+    div.className = 'queue-item'+(i===currentTrack?' playing':'');
+    div.innerHTML = `
+      <div class="q-num">${i===currentTrack?'▶':i+1}</div>
+      <div class="q-art">${t.artUrl?`<img src="${t.artUrl}" alt="">`:'🎵'}</div>
+      <div class="q-info">
+        <div class="q-name">${t.title}</div>
+        <div class="q-artist">${t.artist||'Unknown'}</div>
+      </div>
+      <div class="q-actions">
+        <button class="btn btn-ghost btn-xs" onclick="removeFromQueue(${i},event)">✕</button>
+      </div>
+    `;
+    div.onclick = () => { loadTrack(i); if(isPlaying){hostAudioEl.play();} };
+    list.appendChild(div);
+  });
+  document.getElementById('stat-queue').textContent = queue.length;
+}
+
+function removeFromQueue(i, e) {
+  e.stopPropagation();
+  queue.splice(i, 1);
+  if (currentTrack >= i) currentTrack = Math.max(0, currentTrack-1);
+  renderHostQueue();
+  broadcast({ type:'queue-update', queue: queueMeta() });
+}
+
+function clearQueue() {
+  queue = []; currentTrack = -1;
+  hostAudioEl.pause(); hostAudioEl.src='';
+  isPlaying = false;
+  document.getElementById('upload-zone').style.display='block';
+  document.getElementById('host-track-display').style.display='none';
+  document.getElementById('host-controls').style.display='none';
+  document.getElementById('mini-player').style.display='none';
+  renderHostQueue();
+  broadcast({ type:'queue-update', queue: [] });
+}
+
+function queueMeta() {
+  return queue.map(t => ({ title:t.title, artist:t.artist||'', album:t.album||'', hasArt:!!t.artUrl }));
+}
+
+function hostNext() {
+  if (!queue.length) return;
+  let next;
+  if (shuffleMode) {
+    next = Math.floor(Math.random() * queue.length);
+  } else {
+    next = (currentTrack + 1) % queue.length;
+  }
+  loadTrack(next);
+  if (isPlaying) { hostAudioEl.play(); broadcast({ type:'play', position:0, trackIndex:next, trackName:queue[next]?.title }); }
+}
+
+function hostPrev() {
+  if (!queue.length) return;
+  const prev = (currentTrack - 1 + queue.length) % queue.length;
+  loadTrack(prev);
+  if (isPlaying) { hostAudioEl.play(); broadcast({ type:'play', position:0, trackIndex:prev, trackName:queue[prev]?.title }); }
+}
+
+function toggleLoop() {
+  loopMode = !loopMode;
+  document.getElementById('btn-loop').classList.toggle('active-ctrl', loopMode);
+  toast(loopMode?'🔁 Loop ON':'🔁 Loop OFF');
+  broadcast({ type:'loop', loopMode });
+}
+
+function toggleShuffle() {
+  shuffleMode = !shuffleMode;
+  document.getElementById('btn-shuffle').classList.toggle('active-ctrl', shuffleMode);
+  toast(shuffleMode?'🔀 Shuffle ON':'🔀 Shuffle OFF');
+  broadcast({ type:'shuffle', shuffleMode });
+}
+
+function togglePlay() {
+  if (!queue.length || currentTrack < 0) { toast('⚠️ Upload a song first'); return; }
+  if (hostAudioEl.paused) {
+    hostAudioEl.play();
+    isPlaying = true;
+    setHostPlayUI(true);
+    broadcast({ type:'play', position:hostAudioEl.currentTime, trackIndex:currentTrack, trackName:queue[currentTrack]?.title });
+  } else {
+    hostAudioEl.pause();
+    isPlaying = false;
+    setHostPlayUI(false);
+    broadcast({ type:'pause', position:hostAudioEl.currentTime });
   }
 }
 
-function onListenerConnect(conn) {
-  const listenerName = conn.metadata?.name || 'Listener';
+function setHostPlayUI(playing) {
+  document.getElementById('play-btn').textContent = playing?'⏸':'▶';
+  document.getElementById('mini-play-btn').textContent = playing?'⏸':'▶';
+  document.getElementById('host-eq').classList.toggle('paused', !playing);
+  document.getElementById('host-album-art').classList.toggle('spinning', playing);
+  document.getElementById('host-art-strip').classList.toggle('paused', !playing);
+  updateSyncStatus();
+}
+
+function hostSeek(e) {
+  if (!hostAudioEl.duration) return;
+  const bar = document.getElementById('seek-bar');
+  hostAudioEl.currentTime = (e.offsetX/bar.offsetWidth)*hostAudioEl.duration;
+  broadcastSmall({ type:'seek', position:hostAudioEl.currentTime });
+}
+
+function updateStatTime() {
+  document.getElementById('stat-time').textContent = fmt(hostAudioEl.currentTime);
+}
+
+function updateSyncStatus() {
+  const n = Object.keys(activeConns).length;
+  document.getElementById('sync-status-text').textContent = n>0 ? `📡 Syncing to ${n} listener${n>1?'s':''}` : '🔇 No listeners';
+}
+
+// ══════════════════════════════════════════
+//  HOST PEER SETUP
+// ══════════════════════════════════════════
+async function hostCreate() {
+  const name = document.getElementById('host-name-input').value.trim();
+  if (!name) { toast('⚠️ Enter your DJ name'); return; }
+  const customCode = document.getElementById('custom-code-input').value.trim().toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const pass = document.getElementById('host-password').value;
+
+  hostName_ = name;
+  roomPassword_ = pass;
+
+  document.getElementById('host-setup-card').querySelector('button').disabled = true;
+  document.getElementById('host-conn-steps').style.display='flex';
+  connStep('cs1','active');
+
+  try {
+    const code = customCode || genCode();
+    roomCode_ = code;
+    connStep('cs1','done'); connStep('cs2','active');
+
+    const { peer } = await initPeer('syncbeat-'+code);
+    myPeer = peer;
+    connStep('cs2','done'); connStep('cs3','active');
+    peer.on('connection', onListenerConn);
+    connStep('cs3','done');
+
+    await sleep(300);
+    document.getElementById('host-setup-card').style.display='none';
+    document.getElementById('host-room-ui').style.display='block';
+    document.getElementById('host-code-display').textContent = code;
+    buildEQ('host-eq');
+    toast(`🎉 Room "${code}" is live!`);
+  } catch(e) {
+    connStep('cs1','err');
+    toast('❌ Failed. Try a different room code.');
+    document.getElementById('host-setup-card').querySelector('button').disabled=false;
+  }
+}
+
+function onListenerConn(conn) {
+  const lName = conn.metadata?.name || 'Listener';
+  const lPass = conn.metadata?.password || '';
+
+  if (roomPassword_ && lPass !== roomPassword_) {
+    conn.on('open', () => {
+      conn.send({ type:'auth-fail', msg:'Wrong password' });
+      setTimeout(()=>conn.close(), 500);
+    });
+    return;
+  }
 
   conn.on('open', () => {
-    // Store connection
-    activeConns[conn.peer] = { conn, name: listenerName };
+    activeConns[conn.peer] = { conn, name:lName, latency:0 };
 
-    // Send welcome + current state
-    conn.send({ type:'welcome', hostName: hostName_ });
+    conn.send({ type:'welcome', hostName:hostName_, roomCode:roomCode_,
+      queue:queueMeta(), currentTrack, isPlaying, position:hostAudioEl.currentTime,
+      loopMode, shuffleMode });
 
-    // If a track is already loaded, immediately send the file to this new listener
-    if (trackFile_) {
-      sendFileToConn(conn);
-      // Also tell them current playback state
-      conn.send({ type:'sync', isPlaying, position: hostAudio.currentTime, trackName: trackMeta_.name });
+    // Send current track file
+    if (queue.length && currentTrack >= 0) {
+      sendFileToConn(conn, currentTrack);
     }
 
     updateListenersUI();
-    toast(`👋 ${listenerName} joined!`);
+    addChatMessage('host', null, `${lName} joined the room`, true);
+    toast(`👋 ${lName} joined!`);
+
+    // Ping loop
+    const pingLoop = setInterval(() => {
+      if (!conn.open) { clearInterval(pingLoop); return; }
+      pingTimers[conn.peer] = performance.now();
+      try { conn.send({ type:'ping', t:performance.now() }); } catch(e){}
+    }, 4000);
+    setTimeout(() => {
+      if (conn.open) {
+        pingTimers[conn.peer] = performance.now();
+        try { conn.send({ type:'ping', t:performance.now() }); } catch(e){}
+      }
+    }, 500);
   });
 
   conn.on('data', msg => {
-    if (msg.type === 'request-file') sendFileToConn(conn);
-    // Pong: calculate one-way latency
-    if (msg.type === 'pong' && pingTimers[conn.peer]) {
-      const rtt = (performance.now() - pingTimers[conn.peer]) / 1000;
-      peerLatency[conn.peer] = rtt / 2; // one-way
+    if (msg.type==='pong' && pingTimers[conn.peer]) {
+      const rtt = (performance.now()-pingTimers[conn.peer])/1000;
+      peerLatency[conn.peer] = rtt/2;
+      if (activeConns[conn.peer]) activeConns[conn.peer].latency = Math.round(rtt*500);
       delete pingTimers[conn.peer];
+      updateListenersUI();
+    }
+    if (msg.type==='request-file') sendFileToConn(conn, msg.trackIndex ?? currentTrack);
+    if (msg.type==='chat') {
+      const c = activeConns[conn.peer];
+      addChatMessage('host', c?.name||'?', msg.text);
+      broadcastExcept({ type:'chat', name:c?.name||'?', text:msg.text, color:msg.color }, conn.peer);
+    }
+    if (msg.type==='reaction') {
+      spawnReaction(msg.emoji);
+      broadcastExcept({ type:'reaction', emoji:msg.emoji }, conn.peer);
+    }
+    if (msg.type==='vote') {
+      if (queue[msg.trackIndex]) {
+        queue[msg.trackIndex].votes = (queue[msg.trackIndex].votes||0)+1;
+        renderHostQueue();
+        broadcast({ type:'vote-update', trackIndex:msg.trackIndex, votes:queue[msg.trackIndex].votes });
+      }
     }
   });
 
-  // Periodically ping this listener to measure latency
-  const pingLoop = setInterval(() => {
-    if (!conn.open) { clearInterval(pingLoop); return; }
-    pingTimers[conn.peer] = performance.now();
-    try { conn.send({ type:'ping', t: performance.now() }); } catch(e){}
-  }, PING_INTERVAL);
-  // First ping immediately
-  setTimeout(() => {
-    if (conn.open) {
-      pingTimers[conn.peer] = performance.now();
-      try { conn.send({ type:'ping', t: performance.now() }); } catch(e){}
-    }
-  }, 300);
-
   conn.on('close', () => {
+    const n = activeConns[conn.peer]?.name||'Listener';
     delete activeConns[conn.peer];
+    delete peerLatency[conn.peer];
     updateListenersUI();
+    addChatMessage('host', null, `${n} left the room`, true);
   });
   conn.on('error', () => {
     delete activeConns[conn.peer];
@@ -932,444 +1560,503 @@ function onListenerConnect(conn) {
   });
 }
 
-// ── Send audio file in chunks to ONE connection ──
-async function sendFileToConn(conn) {
-  if (!trackFile_ || !conn.open) return;
-
-  const buffer = await trackFile_.arrayBuffer();
-  const total = buffer.byteLength;
-
-  // Tell listener a file is coming
-  conn.send({ type:'file-start', name: trackMeta_.name, size: total, mimeType: trackFile_.type });
-
-  // Send in chunks
-  let offset = 0;
-  while (offset < total) {
-    if (!conn.open) break;
-    const slice = buffer.slice(offset, offset + CHUNK);
-    conn.send({ type:'file-chunk', data: slice });
-    offset += CHUNK;
-    // Small yield to avoid overwhelming the channel
-    await sleep(5);
-  }
-  conn.send({ type:'file-end' });
-}
-
-// ── Broadcast control messages to ALL listeners, with per-peer latency compensation ──
+// ── Broadcast helpers ──
 function broadcast(msg) {
-  Object.entries(activeConns).forEach(([peerId, { conn }]) => {
+  Object.entries(activeConns).forEach(([peerId, {conn}]) => {
     if (!conn.open) return;
     try {
-      const latency = peerLatency[peerId] || 0.08; // default 80ms if not measured yet
-      let out = { ...msg, sentAt: performance.now() };
-      // For play/seek/sync: shift position forward by estimated one-way latency
-      // so listener starts at the right spot by the time the message arrives
-      if ((msg.type === 'play' || msg.type === 'seek' || msg.type === 'sync') && msg.position != null) {
-        out.position = msg.position + latency;
+      const lat = peerLatency[peerId]||0.08;
+      let out = {...msg, sentAt:performance.now()};
+      if ((msg.type==='play'||msg.type==='seek'||msg.type==='sync') && msg.position!=null) {
+        out.position = msg.position + lat;
       }
       conn.send(out);
     } catch(e){}
   });
 }
-
-// ── Track loading (host) ──
-function trackLoaded(input) {
-  const file = input.files[0];
-  if (!file) return;
-  trackFile_ = file;
-  trackMeta_ = { name: file.name.replace(/\.[^.]+$/,''), size: file.size, type: file.type };
-  trackLoaded_ = true;
-
-  const url = URL.createObjectURL(file);
-  hostAudio.src = url;
-  hostAudio.load();
-
-  document.getElementById('host-track-name').textContent = trackMeta_.name;
-  document.getElementById('host-track-sub').textContent = `${(file.size/1024/1024).toFixed(1)} MB · ${file.type}`;
-  document.getElementById('now-playing').style.display = 'block';
-
-  hostAudio.onloadedmetadata = () => {
-    document.getElementById('t-total').textContent = fmt(hostAudio.duration);
-  };
-  hostAudio.ontimeupdate = () => {
-    if (!hostAudio.duration) return;
-    document.getElementById('seek-fill').style.width = (hostAudio.currentTime/hostAudio.duration*100)+'%';
-    document.getElementById('t-curr').textContent = fmt(hostAudio.currentTime);
-  };
-  hostAudio.onended = () => {
-    isPlaying = false;
-    document.getElementById('play-btn').textContent = '▶';
-    document.getElementById('host-wave').classList.add('stopped');
-    document.getElementById('host-disc').classList.remove('spinning');
-    broadcast({ type:'pause', position:0 });
-  };
-
-  // Send file to all currently connected listeners
-  Object.values(activeConns).forEach(({ conn }) => sendFileToConn(conn));
-
-  // Broadcast track metadata
-  broadcast({ type:'track-meta', name: trackMeta_.name });
-  toast(`🎵 Loaded: ${trackMeta_.name} — sending to listeners...`);
+function broadcastSmall(msg) { // no latency compensation (for periodic seeks)
+  Object.values(activeConns).forEach(({conn}) => {
+    if(conn.open) try{conn.send({...msg,sentAt:performance.now()});}catch(e){}
+  });
 }
-
-function togglePlay() {
-  if (!trackLoaded_) { toast('⚠️ Upload a song first'); return; }
-  if (hostAudio.paused) {
-    hostAudio.play();
-    isPlaying = true;
-    document.getElementById('play-btn').textContent = '⏸';
-    document.getElementById('host-wave').classList.remove('stopped');
-    document.getElementById('host-disc').classList.add('spinning');
-    broadcast({ type:'play', position: hostAudio.currentTime, trackName: trackMeta_.name });
-    updateSyncStatus();
-  } else {
-    hostAudio.pause();
-    isPlaying = false;
-    document.getElementById('play-btn').textContent = '▶';
-    document.getElementById('host-wave').classList.add('stopped');
-    document.getElementById('host-disc').classList.remove('spinning');
-    broadcast({ type:'pause', position: hostAudio.currentTime });
-  }
-}
-
-function audioRestart() {
-  hostAudio.currentTime = 0;
-  broadcast({ type:'seek', position:0 });
-}
-function audioSkip(s) {
-  hostAudio.currentTime = Math.min(hostAudio.duration||999, hostAudio.currentTime+s);
-  broadcast({ type:'seek', position: hostAudio.currentTime });
-}
-function hostSeek(e) {
-  if (!hostAudio.duration) return;
-  const bar = document.getElementById('seek-bar');
-  hostAudio.currentTime = (e.offsetX/bar.offsetWidth)*hostAudio.duration;
-  broadcast({ type:'seek', position: hostAudio.currentTime });
-}
-
-// Periodic re-sync every 8 seconds while playing — corrects any accumulated drift
-setInterval(() => {
-  if (isPlaying && Object.keys(activeConns).length > 0) {
-    broadcast({ type:'seek', position: hostAudio.currentTime });
-  }
-}, 8000);
-
-function updateSyncStatus() {
-  const n = Object.keys(activeConns).length;
-  document.getElementById('sync-status-text').textContent =
-    n>0 ? `📡 Streaming to ${n} listener${n>1?'s':''}` : '🔇 No listeners';
-}
-
-function updateListenersUI() {
-  const n = Object.keys(activeConns).length;
-  document.getElementById('host-listener-count').textContent = n;
-  updateSyncStatus();
-
-  const badge = document.getElementById('listeners-status');
-  badge.className = n>0 ? 'badge badge-live' : 'badge badge-idle';
-  badge.innerHTML = n>0 ? `<span class="dot pulse"></span> ${n} Live` : 'Waiting...';
-
-  const grid = document.getElementById('listeners-grid');
-  const entries = Object.entries(activeConns);
-  if (!entries.length) {
-    grid.innerHTML = '<div style="color:var(--muted);font-size:0.75rem;grid-column:1/-1;padding:16px 0;text-align:center;">No listeners yet. Share your room code! 👆</div>';
-    return;
-  }
-  grid.innerHTML = '';
-  entries.forEach(([pid, { name }], i) => {
-    const col = COLORS[i%COLORS.length];
-    const card = document.createElement('div');
-    card.className = 'l-card synced';
-    card.innerHTML = `
-      <div class="l-avatar" style="background:${col}22;color:${col}">🎧</div>
-      <div class="l-name">${name}</div>
-      <div class="l-stat">● Listening</div>
-    `;
-    grid.appendChild(card);
+function broadcastExcept(msg, exceptPeer) {
+  Object.entries(activeConns).forEach(([pid,{conn}]) => {
+    if(pid!==exceptPeer && conn.open) try{conn.send(msg);}catch(e){}
   });
 }
 
+async function sendFileToConn(conn, trackIndex) {
+  if (!conn.open || !queue[trackIndex]) return;
+  const t = queue[trackIndex];
+  const buf = await t.file.arrayBuffer();
+  const total = buf.byteLength;
+  conn.send({ type:'file-start', name:t.title, artist:t.artist||'', album:t.album||'',
+    artUrl: t.artUrl ? null : null, // art sent separately
+    size:total, mimeType:t.file.type, trackIndex });
+  // Send art as separate chunk
+  if (t.artBlob) {
+    const artBuf = await t.artBlob.arrayBuffer();
+    conn.send({ type:'art-data', data:artBuf, trackIndex });
+  }
+  let offset=0;
+  while(offset<total) {
+    if(!conn.open) break;
+    conn.send({ type:'file-chunk', data:buf.slice(offset,offset+CHUNK) });
+    offset+=CHUNK;
+    await sleep(4);
+  }
+  conn.send({ type:'file-end', trackIndex });
+}
+
+async function broadcastFileAll(trackIndex) {
+  for (const {conn} of Object.values(activeConns)) {
+    sendFileToConn(conn, trackIndex);
+  }
+  broadcast({ type:'track-switch', trackIndex, trackName:queue[trackIndex]?.title,
+    artist:queue[trackIndex]?.artist||'' });
+}
+
+// ── Listeners UI ──
+function updateListenersUI() {
+  const n = Object.keys(activeConns).length;
+  document.getElementById('stat-listeners').textContent = n;
+  updateSyncStatus();
+  const badge = document.getElementById('listeners-badge');
+  badge.className = n>0 ? 'badge badge-live' : 'badge badge-idle';
+  badge.innerHTML = n>0 ? `<span class="dot pulse"></span> ${n} Live` : 'Waiting';
+
+  const grid = document.getElementById('host-listeners-grid');
+  if (!n) {
+    grid.innerHTML='<div style="color:var(--text3);font-size:0.75rem;grid-column:1/-1;text-align:center;padding:12px">Share the code to invite friends 👆</div>';
+    return;
+  }
+  grid.innerHTML='';
+  Object.entries(activeConns).forEach(([pid,{name,latency}],i) => {
+    const col = COLORS[i%COLORS.length];
+    const pingMs = latency||0;
+    const pingClass = pingMs<80?'good':pingMs<200?'ok':'bad';
+    const card = document.createElement('div');
+    card.className='listener-card live';
+    card.innerHTML=`
+      <div class="l-avatar" style="background:${col}22;color:${col}">${name[0].toUpperCase()}</div>
+      <div class="l-name">${name}</div>
+      <div class="l-ping ${pingClass}">${pingMs?pingMs+'ms':'—'}</div>
+      <div class="l-eq ${isPlaying?'':'paused'}" id="leq-${pid.slice(0,6)}"></div>
+    `;
+    grid.appendChild(card);
+    buildSmallEQ(`leq-${pid.slice(0,6)}`);
+  });
+}
+
+// ── Copy/Share ──
 function copyCode() {
   navigator.clipboard.writeText(roomCode_).catch(()=>{});
-  toast('✅ Code copied!');
+  toast('✅ Room code copied!');
 }
 function shareRoom() {
   const url = window.location.href.split('?')[0]+'?join='+roomCode_;
-  if (navigator.share) {
-    navigator.share({ title:'Join my SyncBeat room', text:`Join room "${roomCode_}" and listen live!`, url });
+  if (navigator.share) navigator.share({ title:'Join SyncBeat', text:`Join room ${roomCode_}`, url });
+  else { navigator.clipboard.writeText(url).catch(()=>{}); toast('🔗 Share link copied!'); }
+}
+function showShareCard() {
+  const t = currentTrack>=0 ? queue[currentTrack] : null;
+  document.getElementById('sc-song').textContent = t?.title||'Nothing playing';
+  document.getElementById('sc-artist').textContent = t?.artist||'—';
+  document.getElementById('sc-code').textContent = roomCode_;
+  const modal = document.getElementById('share-modal');
+  modal.style.display='flex';
+}
+function closeShareCard() { document.getElementById('share-modal').style.display='none'; }
+function downloadShareCard() {
+  // Simple PNG download using Canvas
+  const card = document.getElementById('share-card-preview');
+  const w=380, h=220;
+  const canvas = document.createElement('canvas');
+  canvas.width=w*2; canvas.height=h*2;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(2,2);
+  const grad = ctx.createLinearGradient(0,0,w,h);
+  grad.addColorStop(0,'#1a1020'); grad.addColorStop(1,'#0e1a20');
+  ctx.fillStyle=grad; ctx.fillRect(0,0,w,h);
+  ctx.fillStyle='#f5c842'; ctx.font='bold 22px Syne, sans-serif';
+  ctx.textAlign='center'; ctx.fillText('🎵 SyncBeat', w/2, 42);
+  ctx.fillStyle='#888'; ctx.font='11px Syne'; ctx.fillText('NOW LISTENING', w/2, 62);
+  ctx.fillStyle='#fff'; ctx.font='bold 18px Syne'; ctx.fillText(document.getElementById('sc-song').textContent, w/2, 100);
+  ctx.fillStyle='#aaa'; ctx.font='13px Syne'; ctx.fillText(document.getElementById('sc-artist').textContent, w/2, 120);
+  ctx.fillStyle='#f5c842'; ctx.font='bold 32px JetBrains Mono, monospace'; ctx.fillText(roomCode_, w/2, 162);
+  ctx.fillStyle='#555'; ctx.font='10px Syne'; ctx.fillText('JOIN AT SYNCBEAT • ENTER CODE ABOVE', w/2, 190);
+  const a=document.createElement('a'); a.download='syncbeat-card.png'; a.href=canvas.toDataURL();
+  a.click();
+  toast('📸 Share card downloaded!');
+}
+
+// ══════════════════════════════════════════
+//  CHAT
+// ══════════════════════════════════════════
+const chatColors = {};
+function getChatColor(name) {
+  if (!chatColors[name]) chatColors[name] = COLORS[Object.keys(chatColors).length % COLORS.length];
+  return chatColors[name];
+}
+function addChatMessage(side, name, text, isSystem=false) {
+  const listId = side==='host' ? 'host-chat-messages' : 'listener-chat-messages';
+  const el = document.getElementById(listId); if(!el)return;
+  const isMe = (side==='host' && name===null && !isSystem) || (side==='listener' && name===null && !isSystem);
+  const div = document.createElement('div');
+  if (isSystem) {
+    div.className='chat-msg system';
+    div.innerHTML=`<div class="chat-bubble"><div class="chat-text">${text}</div></div>`;
   } else {
-    navigator.clipboard.writeText(url).catch(()=>{});
-    toast('🔗 Share link copied!');
+    const n = name || (side==='host'?hostName_:lastJoinName);
+    const col = getChatColor(n);
+    const isOwnMsg = (side==='host' && !name) || (side==='listener' && !name);
+    div.className='chat-msg'+(isOwnMsg?' me':'');
+    div.innerHTML=`
+      <div class="chat-avatar" style="background:${col}22;color:${col}">${n[0].toUpperCase()}</div>
+      <div class="chat-bubble">
+        <div class="chat-name">${n}</div>
+        <div class="chat-text">${text.replace(/</g,'&lt;')}</div>
+      </div>
+    `;
+  }
+  el.appendChild(div);
+  el.scrollTop = el.scrollHeight;
+}
+
+function sendChat(side) {
+  const inputId = side==='host' ? 'host-chat-input' : 'listener-chat-input';
+  const input = document.getElementById(inputId);
+  const text = input.value.trim(); if(!text)return;
+  input.value='';
+  if (side==='host') {
+    addChatMessage('host', null, text);
+    broadcast({ type:'chat', name:hostName_, text, color:getChatColor(hostName_) });
+  } else {
+    addChatMessage('listener', null, text);
+    if (listenerConn?.open) listenerConn.send({ type:'chat', text, color:getChatColor(lastJoinName) });
   }
 }
 
-// ══════════════════════
-//  LISTENER SIDE
-// ══════════════════════
+// ══════════════════════════════════════════
+//  REACTIONS
+// ══════════════════════════════════════════
+function spawnReaction(emoji) {
+  const stage = document.getElementById('reactions-stage');
+  const el = document.createElement('div');
+  el.className='reaction-float';
+  el.textContent=emoji;
+  el.style.left = (10+Math.random()*80)+'vw';
+  stage.appendChild(el);
+  setTimeout(()=>el.remove(), 3100);
+}
+function sendReaction(emoji) {
+  spawnReaction(emoji);
+  broadcast({ type:'reaction', emoji });
+}
+function listenerReact(emoji) {
+  spawnReaction(emoji);
+  if (listenerConn?.open) listenerConn.send({ type:'reaction', emoji });
+}
 
+// ══════════════════════════════════════════
+//  JOIN / LISTENER
+// ══════════════════════════════════════════
 async function joinRoom() {
   const name = document.getElementById('join-name-input').value.trim();
   const code = document.getElementById('join-code-input').value.trim().toUpperCase();
+  const pass = document.getElementById('join-password').value;
   if (!name) { toast('⚠️ Enter your name'); return; }
   if (code.length < 4) { toast('⚠️ Enter the room code'); return; }
+  lastJoinCode=code; lastJoinName=name; lastJoinPass=pass;
 
-  document.querySelector('#join-form-card button').disabled = true;
-  document.getElementById('join-connecting').style.display = 'block';
+  document.querySelector('#join-form-card button').disabled=true;
+  document.getElementById('join-conn-steps').style.display='flex';
   connStep('jc1','active');
 
   try {
-    const { peer } = await initPeer('listener-'+genShort()+'-'+genShort());
+    const { peer } = await initPeer('listener-'+genShort());
     myPeer = peer;
     connStep('jc1','done'); connStep('jc2','active');
 
-    const conn = peer.connect('syncbeat-host-'+code, {
-      metadata: { name },
-      reliable: true,
-      serialization: 'binary'
+    const conn = peer.connect('syncbeat-'+code, {
+      metadata:{name, password:pass}, reliable:true, serialization:'binary'
     });
 
-    let connected = false;
+    let connected=false;
     conn.on('open', () => {
-      connected = true;
-      listenerConn = conn;
+      connected=true;
+      listenerConn=conn;
       connStep('jc2','done'); connStep('jc3','active');
-      conn.on('data', onHostMessage);
+      conn.on('data', onHostMsg);
       conn.on('close', () => {
-        toast('⚠️ Host disconnected');
+        toast('⚠️ Disconnected from host');
         setListenerBadge('warn','Disconnected');
+        scheduleReconnect();
       });
       connStep('jc3','done');
-
-      setTimeout(async () => {
-        document.getElementById('join-form-card').style.display = 'none';
-        document.getElementById('listener-room').style.display = 'block';
-        document.getElementById('listener-room-code').textContent = code;
-        document.getElementById('listener-host-name').textContent = '...';
-        buildWave('listener-wave');
-        document.getElementById('listener-wave').classList.add('stopped');
-        toast(`✅ Joined! Waiting for host's music...`);
+      setTimeout(() => {
+        document.getElementById('join-form-card').style.display='none';
+        document.getElementById('listener-room-ui').style.display='block';
+        document.getElementById('listener-room-badge').textContent = code;
+        toast(`✅ Joined! Waiting for music...`);
       }, 600);
     });
-
     conn.on('error', () => {
       connStep('jc2','err');
       toast('❌ Room not found. Check the code.');
-      document.querySelector('#join-form-card button').disabled = false;
+      document.querySelector('#join-form-card button').disabled=false;
     });
-
-    // Timeout if host never responds
-    setTimeout(() => {
-      if (!connected) {
-        connStep('jc2','err');
-        toast('❌ Could not reach host. Check the room code.');
-        document.querySelector('#join-form-card button').disabled = false;
-      }
-    }, 10000);
-
+    setTimeout(()=>{
+      if(!connected){ connStep('jc2','err'); toast('❌ Could not reach host.'); document.querySelector('#join-form-card button').disabled=false; }
+    }, 12000);
   } catch(e) {
     connStep('jc1','err');
-    toast('❌ Network error. Check your internet.');
-    document.querySelector('#join-form-card button').disabled = false;
+    toast('❌ Network error. Check internet.');
+    document.querySelector('#join-form-card button').disabled=false;
   }
 }
 
-// ── Handle all messages from host ──
-function onHostMessage(msg) {
+// ── Auto-reconnect ──
+function scheduleReconnect() {
+  clearTimeout(autoReconnectTimer);
+  if (!lastJoinCode) return;
+  toast('🔄 Reconnecting in 3s...');
+  autoReconnectTimer = setTimeout(async () => {
+    if (!myPeer || myPeer.destroyed) {
+      document.getElementById('join-name-input').value = lastJoinName;
+      document.getElementById('join-code-input').value = lastJoinCode;
+      document.getElementById('join-password').value = lastJoinPass;
+      joinRoom();
+    }
+  }, 3000);
+}
 
-  // ── Ping from host → reply immediately ──
-  if (msg.type === 'ping') {
-    if (listenerConn && listenerConn.open) {
-      try { listenerConn.send({ type:'pong', t: msg.t }); } catch(e){}
+// ── Handle host messages ──
+function onHostMsg(msg) {
+  // Auth fail
+  if (msg.type==='auth-fail') {
+    toast('❌ Wrong password. Cannot join this room.');
+    leaveRoom();
+    return;
+  }
+  // Ping
+  if (msg.type==='ping') {
+    if(listenerConn?.open) try{listenerConn.send({type:'pong',t:msg.t});}catch(e){}
+  }
+  // Welcome
+  if (msg.type==='welcome') {
+    listenerHostName = msg.hostName||'Host';
+    document.getElementById('listener-host-badge').textContent = 'Host: '+listenerHostName;
+    listenerQueue = msg.queue||[];
+    renderListenerQueue();
+    if (msg.isPlaying) {
+      document.getElementById('listener-song-title').textContent = listenerQueue[msg.currentTrack]?.title||'Playing...';
     }
   }
-
-  // ── Welcome ──
-  if (msg.type === 'welcome') {
-    document.getElementById('listener-host-name').textContent = msg.hostName || 'Host';
-    document.getElementById('signal-bar').style.display = 'flex';
-    document.getElementById('signal-text').innerHTML = `Connected to <strong>${msg.hostName}</strong>`;
+  // Chat from host or other listeners
+  if (msg.type==='chat') {
+    addChatMessage('listener', msg.name, msg.text);
   }
-
-  // ── Track metadata ──
-  if (msg.type === 'track-meta') {
-    document.getElementById('listener-track-name').textContent = msg.name;
-    document.getElementById('listener-track-sub').textContent = 'Receiving file...';
-    // Reset chunk buffers
-    receivedChunks = [];
-    expectedSize = 0;
-    receivedSize = 0;
+  // Reaction
+  if (msg.type==='reaction') spawnReaction(msg.emoji);
+  // Queue update
+  if (msg.type==='queue-update') {
+    listenerQueue = msg.queue||[];
+    renderListenerQueue();
   }
-
-  // ── File transfer start ──
-  if (msg.type === 'file-start') {
-    receivedChunks = [];
-    expectedSize = msg.size;
-    receivedSize = 0;
-    document.getElementById('listener-track-name').textContent = msg.name;
-    document.getElementById('listener-track-sub').textContent = 'Receiving audio... 0%';
-    document.getElementById('signal-text').innerHTML = `⬇️ Receiving: <strong>${msg.name}</strong>`;
-    setListenerBadge('warn', 'Buffering...');
+  // Vote update
+  if (msg.type==='vote-update') {
+    if (listenerQueue[msg.trackIndex]) {
+      listenerQueue[msg.trackIndex].votes = msg.votes;
+      renderListenerQueue();
+    }
   }
-
-  // ── File chunk ──
-  if (msg.type === 'file-chunk') {
-    receivedChunks.push(msg.data);
-    receivedSize += msg.data.byteLength;
-    const pct = Math.round(receivedSize/expectedSize*100);
-    document.getElementById('listener-track-sub').textContent = `Receiving audio... ${pct}%`;
+  // Track switch
+  if (msg.type==='track-switch') {
+    listenerCurrentTrack = msg.trackIndex;
+    document.getElementById('listener-song-title').textContent = msg.trackName||'—';
+    document.getElementById('listener-song-artist').textContent = msg.artist||'';
+    renderListenerQueue();
   }
-
-  // ── File complete ──
-  if (msg.type === 'file-end') {
-    // Reconstruct the file from chunks
-    const blob = new Blob(receivedChunks, { type: 'audio/mpeg' });
+  // File start
+  if (msg.type==='file-start') {
+    receivedChunks=[]; expectedSize=msg.size; receivedSize=0;
+    document.getElementById('listener-song-title').textContent = msg.name||'Loading...';
+    document.getElementById('listener-song-artist').textContent = msg.artist||'';
+    setListenerBadge('warn','Buffering...');
+    document.getElementById('jc3').className='conn-step active';
+  }
+  // Art
+  if (msg.type==='art-data') {
+    const blob = new Blob([msg.data],{type:'image/jpeg'});
     const url = URL.createObjectURL(blob);
-
-    // Create or reuse audio element
-    if (!listenerAudio) {
-      listenerAudio = new Audio();
-      listenerAudio.volume = parseFloat(document.getElementById('listener-vol').value);
-    } else {
-      listenerAudio.pause();
-      listenerAudio.src = '';
-    }
-    listenerAudio.src = url;
+    const disc = document.getElementById('listener-disc');
+    disc.style.backgroundImage=`url(${url})`;
+    disc.style.backgroundSize='cover';
+    disc.textContent='';
+  }
+  // File chunk
+  if (msg.type==='file-chunk') {
+    receivedChunks.push(msg.data);
+    receivedSize+=msg.data.byteLength;
+    const pct=Math.round(receivedSize/expectedSize*100);
+    document.getElementById('listener-song-artist').textContent=`Receiving... ${pct}%`;
+  }
+  // File end
+  if (msg.type==='file-end') {
+    const blob=new Blob(receivedChunks,{type:'audio/mpeg'});
+    const url=URL.createObjectURL(blob);
+    if(!listenerAudio){listenerAudio=new Audio();listenerAudio.volume=parseFloat(document.getElementById('listener-vol').value);}
+    else{listenerAudio.pause();listenerAudio.src='';}
+    listenerAudio.src=url;
     listenerAudio.load();
-
-    document.getElementById('listener-track-sub').textContent = '✅ Ready — waiting for host to play';
-    document.getElementById('signal-text').innerHTML = `✅ Audio ready — waiting for host`;
-    setListenerBadge('live', 'Ready');
-    toast('✅ Audio loaded! Host will start shortly.');
-    receivedChunks = []; // free memory
+    listenerAudio.ontimeupdate=()=>{
+      if(!listenerAudio.duration)return;
+      const p=listenerAudio.currentTime/listenerAudio.duration*100;
+      document.getElementById('listener-progress').style.width=p+'%';
+      document.getElementById('listener-t-curr').textContent=fmt(listenerAudio.currentTime);
+    };
+    listenerAudio.onloadedmetadata=()=>{
+      document.getElementById('listener-t-total').textContent=fmt(listenerAudio.duration);
+    };
+    document.getElementById('listener-song-artist').textContent=listenerQueue[msg.trackIndex]?.artist||'Ready';
+    setListenerBadge('live','Ready ✓');
+    receivedChunks=[];
+    toast('✅ Audio ready!');
   }
-
-  // ── Sync (sent when listener joins mid-session) ──
-  if (msg.type === 'sync') {
-    document.getElementById('listener-track-name').textContent = msg.trackName || document.getElementById('listener-track-name').textContent;
-    if (listenerAudio && msg.isPlaying) {
-      listenerAudio.currentTime = msg.position || 0;
-      listenerAudio.play().catch(() => {
-        toast('🔔 Tap the screen to enable audio');
-        document.addEventListener('click', () => listenerAudio.play(), {once:true});
-      });
-      setPlayingUI(true);
+  // Play
+  if (msg.type==='play') {
+    if(!listenerAudio?.src){
+      if(listenerConn?.open)listenerConn.send({type:'request-file',trackIndex:msg.trackIndex??0});
+      toast('⏳ Loading audio...');return;
     }
-  }
-
-  // ── Play ──
-  if (msg.type === 'play') {
-    if (!listenerAudio || !listenerAudio.src) {
-      if (listenerConn && listenerConn.open) listenerConn.send({ type:'request-file' });
-      toast('⏳ Loading audio, please wait...');
-      return;
-    }
-    // Extra drift: time spent in transit since host sent (on top of pre-compensated position)
-    const transitExtra = msg.sentAt ? (performance.now() - msg.sentAt) / 1000 : 0;
-    const targetPos = Math.max(0, (msg.position || 0) + transitExtra);
-    listenerAudio.currentTime = targetPos;
-    listenerAudio.play().then(() => {
-      setPlayingUI(true);
-      document.getElementById('listener-track-name').textContent = msg.trackName || document.getElementById('listener-track-name').textContent;
-      toast('🎵 Music started!');
-    }).catch(() => {
-      toast('🔔 Tap anywhere to start audio!');
-      const resume = () => {
-        listenerAudio.currentTime = Math.max(0, targetPos + 0.1);
-        listenerAudio.play().catch(()=>{});
-        setPlayingUI(true);
-      };
-      document.addEventListener('click', resume, {once:true});
-      document.addEventListener('touchstart', resume, {once:true});
+    const transit=msg.sentAt?(performance.now()-msg.sentAt)/1000:0;
+    const pos=Math.max(0,(msg.position||0)+transit);
+    listenerAudio.currentTime=pos;
+    listenerAudio.play().then(()=>{
+      setListenerPlayUI(true);
+      if(msg.trackName)document.getElementById('listener-song-title').textContent=msg.trackName;
+      toast('🎵 Playing!');
+    }).catch(()=>{
+      toast('🔔 Tap anywhere to start audio');
+      const resume=()=>{listenerAudio.currentTime=Math.max(0,pos+0.1);listenerAudio.play().catch(()=>{});setListenerPlayUI(true);};
+      document.addEventListener('click',resume,{once:true});
+      document.addEventListener('touchstart',resume,{once:true});
     });
   }
-
-  // ── Pause ──
-  if (msg.type === 'pause') {
-    if (listenerAudio) {
-      listenerAudio.pause();
-      listenerAudio.currentTime = msg.position || listenerAudio.currentTime;
-    }
-    setPlayingUI(false);
-    document.getElementById('listener-track-sub').textContent = '⏸ Paused by host';
+  // Pause
+  if (msg.type==='pause') {
+    if(listenerAudio){listenerAudio.pause();listenerAudio.currentTime=msg.position||listenerAudio.currentTime;}
+    setListenerPlayUI(false);
+    document.getElementById('listener-song-artist').textContent='⏸ Paused by host';
   }
-
-  // ── Seek ──
-  if (msg.type === 'seek') {
-    if (listenerAudio) {
-      const transitExtra = msg.sentAt ? (performance.now() - msg.sentAt) / 1000 : 0;
-      listenerAudio.currentTime = Math.max(0, (msg.position || 0) + transitExtra);
+  // Seek
+  if (msg.type==='seek') {
+    if(listenerAudio){
+      const transit=msg.sentAt?(performance.now()-msg.sentAt)/1000:0;
+      listenerAudio.currentTime=Math.max(0,(msg.position||0)+transit);
     }
   }
 }
 
-function setPlayingUI(playing) {
-  const wave = document.getElementById('listener-wave');
-  const disc = document.getElementById('listener-disc');
-  if (playing) {
-    wave.classList.remove('stopped');
-    disc.classList.add('spinning');
-    setListenerBadge('live', 'Synced ✓');
-    document.getElementById('listener-track-sub').textContent = '▶ Playing live';
-    document.getElementById('signal-text').innerHTML = `🎵 Streaming live`;
-  } else {
-    wave.classList.add('stopped');
-    disc.classList.remove('spinning');
-  }
+function setListenerPlayUI(playing) {
+  const disc=document.getElementById('listener-disc');
+  disc.classList.toggle('spinning',playing);
+  setListenerBadge(playing?'live':'idle', playing?'Synced ✓':'Paused');
+  if(playing) document.getElementById('listener-song-artist').textContent = listenerQueue[listenerCurrentTrack]?.artist||'Playing live';
 }
 
 function setListenerBadge(type, text) {
-  const b = document.getElementById('listener-badge');
-  b.className = 'badge badge-'+(type==='live'?'live':type==='warn'?'warn':'idle');
-  b.innerHTML = type==='live'
-    ? `<span class="dot pulse"></span> ${text}`
-    : `<span class="dot"></span> ${text}`;
+  const b=document.getElementById('listener-status-badge');
+  b.className='badge badge-'+(type==='live'?'live':type==='warn'?'warn':'idle');
+  b.innerHTML=type==='live'?`<span class="dot pulse"></span> ${text}`:`<span class="dot"></span> ${text}`;
 }
 
-function setListenerVol(v) {
-  if (listenerAudio) listenerAudio.volume = parseFloat(v);
+function setListenerVol(v) { if(listenerAudio)listenerAudio.volume=parseFloat(v); }
+
+function renderListenerQueue() {
+  const list=document.getElementById('listener-queue-list');
+  if(!listenerQueue.length){
+    list.innerHTML='<div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:12px">No queue yet</div>';
+    return;
+  }
+  list.innerHTML='';
+  listenerQueue.forEach((t,i)=>{
+    const isNow=i===listenerCurrentTrack;
+    const voted=myVotes.has(i);
+    const div=document.createElement('div');
+    div.className='queue-item'+(isNow?' playing':'');
+    div.innerHTML=`
+      <div class="q-num">${isNow?'▶':i+1}</div>
+      <div class="q-art">🎵</div>
+      <div class="q-info">
+        <div class="q-name">${t.title}</div>
+        <div class="q-artist">${t.artist||'Unknown'}</div>
+      </div>
+      ${t.votes?`<div class="q-votes">👍 ${t.votes}</div>`:''}
+      ${!isNow?`<button class="btn btn-violet btn-xs ${voted?'':''}\" onclick="voteTrack(${i},event)">${voted?'✓ Voted':'👍'}</button>`:''}
+    `;
+    list.appendChild(div);
+  });
+}
+
+function voteTrack(index, e) {
+  e.stopPropagation();
+  if (myVotes.has(index)) return;
+  myVotes.add(index);
+  if (listenerConn?.open) listenerConn.send({ type:'vote', trackIndex:index });
+  toast('👍 Vote sent!');
+  renderListenerQueue();
 }
 
 function leaveRoom() {
-  if (listenerAudio) { listenerAudio.pause(); listenerAudio.src=''; listenerAudio=null; }
-  if (listenerConn) listenerConn.close();
-  if (myPeer) myPeer.destroy();
-  myPeer=null; listenerConn=null;
-  document.getElementById('listener-room').style.display='none';
+  clearTimeout(autoReconnectTimer);
+  if(listenerAudio){listenerAudio.pause();listenerAudio.src='';listenerAudio=null;}
+  if(listenerConn)listenerConn.close();
+  if(myPeer)myPeer.destroy();
+  myPeer=null;listenerConn=null;lastJoinCode='';
+  document.getElementById('listener-room-ui').style.display='none';
   document.getElementById('join-form-card').style.display='block';
   document.getElementById('join-form-card').querySelector('button').disabled=false;
-  document.getElementById('join-connecting').style.display='none';
+  document.getElementById('join-conn-steps').style.display='none';
   document.getElementById('join-code-input').value='';
   toast('👋 Left the room');
 }
 
-// ══ DRAG & DROP ══
-const uz = document.getElementById('upload-zone');
-if (uz) {
-  uz.addEventListener('dragover', e=>{e.preventDefault();uz.classList.add('over')});
-  uz.addEventListener('dragleave', ()=>uz.classList.remove('over'));
-  uz.addEventListener('drop', e=>{
-    e.preventDefault(); uz.classList.remove('over');
-    const f=e.dataTransfer?.files[0];
-    if(f && f.type.startsWith('audio/')){
-      const dt=new DataTransfer(); dt.items.add(f);
+// ══════════════════════════════════════════
+//  DRAG & DROP
+// ══════════════════════════════════════════
+const uz=document.getElementById('upload-zone');
+if(uz){
+  uz.addEventListener('dragover',e=>{e.preventDefault();uz.classList.add('over')});
+  uz.addEventListener('dragleave',()=>uz.classList.remove('over'));
+  uz.addEventListener('drop',e=>{
+    e.preventDefault();uz.classList.remove('over');
+    const files=Array.from(e.dataTransfer?.files||[]).filter(f=>f.type.startsWith('audio/'));
+    if(files.length){
+      const dt=new DataTransfer();
+      files.forEach(f=>dt.items.add(f));
       document.getElementById('music-input').files=dt.files;
-      trackLoaded(document.getElementById('music-input'));
+      filesAdded(document.getElementById('music-input'));
     }
   });
 }
 
-// ══ AUTO-JOIN FROM URL ══
-const urlParams = new URLSearchParams(window.location.search);
-const autoJoin = urlParams.get('join');
-if (autoJoin) {
+// ══════════════════════════════════════════
+//  AUTO-JOIN FROM URL
+// ══════════════════════════════════════════
+const urlParams=new URLSearchParams(window.location.search);
+const autoJoin=urlParams.get('join');
+if(autoJoin){
   switchTab('join');
-  document.getElementById('join-code-input').value = autoJoin.toUpperCase();
-  toast(`🔗 Room "${autoJoin}" pre-filled — enter your name and join!`);
+  document.getElementById('join-code-input').value=autoJoin.toUpperCase();
+  toast(`🔗 Room "${autoJoin}" ready — enter your name and join!`);
 }
 
-// ══ Init ══
-buildWave('host-wave');
-buildWave('listener-wave');
+// ══════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════
+buildEQ('host-eq');
 </script>
 </body>
 </html>
