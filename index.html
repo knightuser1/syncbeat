@@ -1163,7 +1163,6 @@ let lastJoinPass = '';
 
 const CHUNK = 32768;
 const COLORS = ['#f5c842','#ff4d72','#00e5c8','#8b5cf6','#22c55e','#f97316','#06b6d4','#ec4899'];
-const DRIFT_THRESHOLD = 0.5; // seconds — only correct sync if drift exceeds this
 
 // ── Utils ──
 function toast(msg, dur=3500) {
@@ -1460,14 +1459,6 @@ function toggleShuffle() {
 
 // ── Scheduled play: everyone starts at the same clock time ──
 const PLAY_COUNTDOWN_MS = 350;
-
-// Smart drift correction — runs every 10s, only nudges if listener is >0.5s off
-// Uses a silent seek (not a jump) — listener receives this and only corrects if
-// their playback position differs from host by more than DRIFT_THRESHOLD seconds
-setInterval(() => {
-  if (!isPlaying || !hostAudioEl.duration || !Object.keys(activeConns).length) return;
-  broadcast({ type:'drift-check', position: hostAudioEl.currentTime });
-}, 10000);
 
 function togglePlay() {
   if (!queue.length || currentTrack < 0) { toast('⚠️ Upload a song first'); return; }
@@ -2116,23 +2107,12 @@ function onHostMsg(msg) {
     setListenerPlayUI(false);
     document.getElementById('listener-song-artist').textContent='⏸ Paused by host';
   }
-  // Seek — only apply if actually playing, never interrupt a paused state
+  // Seek — only when host manually drags the seek bar
   if (msg.type==='seek') {
-    if(listenerAudio && !listenerAudio.paused) {
+    if(listenerAudio) {
       const transit = msg.sentAt ? (performance.now()-msg.sentAt)/1000 : 0;
-      listenerAudio.currentTime = Math.max(0, (msg.position||0) + transit);
-    }
-  }
-  // Drift check — only correct if listener is meaningfully out of sync
-  if (msg.type==='drift-check') {
-    if(listenerAudio && !listenerAudio.paused && listenerAudio.duration) {
-      const transit = msg.sentAt ? (performance.now()-msg.sentAt)/1000 : 0;
-      const expected = (msg.position||0) + transit;
-      const drift = Math.abs(listenerAudio.currentTime - expected);
-      if (drift > DRIFT_THRESHOLD) {
-        // Only nudge, don't hard-jump — smooth correction
-        listenerAudio.currentTime = expected;
-      }
+      const pos = Math.max(0, (msg.position||0) + transit);
+      listenerAudio.currentTime = pos;
     }
   }
 }
