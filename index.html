@@ -692,14 +692,62 @@ input[type=range]::-webkit-slider-thumb {
 /* Scrollable panel for chat on desktop */
 .chat-wrapper { position:relative; }
 
-/* Transfer badge */
-.transfer-btn {
-  font-size:0.65rem;padding:5px 10px;border-radius:7px;
-  background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);
-  color:var(--violet);cursor:pointer;transition:all var(--transition);
-  font-family:'Syne',sans-serif;font-weight:700;
+/* ── Host Transfer ── */
+.transfer-modal {
+  display:none; position:fixed; inset:0; z-index:998;
+  background:rgba(0,0,0,0.85); backdrop-filter:blur(6px);
+  align-items:center; justify-content:center; padding:20px;
 }
-.transfer-btn:hover { background:rgba(139,92,246,0.2); }
+.transfer-modal.open { display:flex; }
+.transfer-box {
+  background:var(--card); border:1px solid var(--border);
+  border-radius:18px; padding:28px; max-width:400px; width:100%;
+  box-shadow: var(--shadow); animation: panelIn 0.25s ease;
+}
+.transfer-box-title {
+  font-size:1.1rem; font-weight:800; margin-bottom:6px;
+}
+.transfer-box-sub {
+  font-size:0.75rem; color:var(--text2); margin-bottom:20px; line-height:1.6;
+}
+.transfer-list { display:flex; flex-direction:column; gap:8px; margin-bottom:20px; }
+.transfer-item {
+  display:flex; align-items:center; gap:12px;
+  background:var(--surface); border:1.5px solid var(--border);
+  border-radius:12px; padding:12px 14px; cursor:pointer;
+  transition:all var(--transition);
+}
+.transfer-item:hover { border-color:var(--violet); background:rgba(139,92,246,0.06); }
+.transfer-item.selected { border-color:var(--violet); background:rgba(139,92,246,0.12); }
+.transfer-avatar {
+  width:36px; height:36px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font-size:0.9rem; font-weight:800; flex-shrink:0;
+}
+.transfer-info { flex:1; }
+.transfer-name { font-size:0.85rem; font-weight:700; }
+.transfer-ping { font-size:0.6rem; color:var(--text3); font-family:'JetBrains Mono',monospace; margin-top:2px; }
+.transfer-check { font-size:1.1rem; opacity:0; transition:opacity var(--transition); }
+.transfer-item.selected .transfer-check { opacity:1; }
+
+/* Transfer button on listener card */
+.l-transfer-btn {
+  margin-top:6px; font-size:0.55rem; padding:3px 8px;
+  border-radius:6px; border:1px solid rgba(139,92,246,0.4);
+  background:rgba(139,92,246,0.08); color:var(--violet);
+  cursor:pointer; font-family:'Syne',sans-serif; font-weight:700;
+  transition:all var(--transition); display:block; width:100%;
+}
+.l-transfer-btn:hover { background:rgba(139,92,246,0.2); }
+
+/* New host badge on listener side */
+.host-crown {
+  display:inline-flex; align-items:center; gap:5px;
+  background:linear-gradient(135deg,rgba(245,200,66,0.15),rgba(255,77,114,0.1));
+  border:1px solid rgba(245,200,66,0.3); border-radius:99px;
+  padding:5px 12px; font-size:0.68rem; font-weight:700; color:var(--gold);
+  margin-top:12px;
+}
 
 /* Custom room name */
 .custom-name-row { display:flex;gap:8px;align-items:center;margin-top:10px; }
@@ -910,7 +958,10 @@ input[type=range]::-webkit-slider-thumb {
       <div class="card">
         <div class="section-header">
           <div class="card-label" style="margin-bottom:0">👥 Listeners</div>
-          <span class="badge badge-idle" id="listeners-badge">Waiting</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn btn-violet btn-xs" onclick="openTransferModal()" id="transfer-host-btn" style="display:none">👑 Transfer Host</button>
+            <span class="badge badge-idle" id="listeners-badge">Waiting</span>
+          </div>
         </div>
         <div class="listeners-grid" id="host-listeners-grid">
           <div style="color:var(--text3);font-size:0.75rem;grid-column:1/-1;text-align:center;padding:12px">
@@ -994,6 +1045,8 @@ input[type=range]::-webkit-slider-thumb {
           <span class="badge badge-live" id="listener-status-badge"><span class="dot pulse"></span> Connected</span>
           <span class="badge badge-idle" id="listener-room-badge">——</span>
         </div>
+        <!-- Crown shown when this listener becomes host -->
+        <div class="host-crown" id="listener-crown" style="display:none">👑 You are now the Host!</div>
         <!-- Listener progress bar -->
         <div style="margin-top:18px;padding:0 10px">
           <div class="progress-wrap" style="cursor:default;height:3px">
@@ -1101,6 +1154,23 @@ input[type=range]::-webkit-slider-thumb {
   </div>
 
 </div><!-- /app -->
+
+<!-- Transfer Host Modal -->
+<div class="transfer-modal" id="transfer-modal">
+  <div class="transfer-box">
+    <div class="transfer-box-title">👑 Transfer Host Controls</div>
+    <div class="transfer-box-sub">
+      Choose a listener to become the new DJ. They'll get full control — play, pause, queue, and chat. You'll stay in the room as a listener.
+    </div>
+    <div class="transfer-list" id="transfer-list">
+      <div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:12px">No listeners connected</div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn btn-violet" id="transfer-confirm-btn" onclick="confirmTransfer()" disabled style="flex:1">👑 Transfer Now</button>
+      <button class="btn btn-ghost" onclick="closeTransferModal()">Cancel</button>
+    </div>
+  </div>
+</div>
 
 <!-- Share Card Modal -->
 <div id="share-modal" style="display:none;position:fixed;inset:0;z-index:998;background:rgba(0,0,0,0.8);display:none;align-items:center;justify-content:center;padding:20px">
@@ -1696,6 +1766,10 @@ function updateListenersUI() {
   badge.className = n>0 ? 'badge badge-live' : 'badge badge-idle';
   badge.innerHTML = n>0 ? `<span class="dot pulse"></span> ${n} Live` : 'Waiting';
 
+  // Show Transfer Host button only when there are listeners
+  const transferBtn = document.getElementById('transfer-host-btn');
+  if (transferBtn) transferBtn.style.display = n>0 ? 'inline-flex' : 'none';
+
   const grid = document.getElementById('host-listeners-grid');
   if (!n) {
     grid.innerHTML='<div style="color:var(--text3);font-size:0.75rem;grid-column:1/-1;text-align:center;padding:12px">Share the code to invite friends 👆</div>';
@@ -1713,10 +1787,127 @@ function updateListenersUI() {
       <div class="l-name">${name}</div>
       <div class="l-ping ${pingClass}">${pingMs?pingMs+'ms':'—'}</div>
       <div class="l-eq ${isPlaying?'':'paused'}" id="leq-${pid.slice(0,6)}"></div>
+      <button class="l-transfer-btn" onclick="quickTransfer('${pid}','${name.replace(/'/g,"\\'")}')">👑 Make Host</button>
     `;
     grid.appendChild(card);
     buildSmallEQ(`leq-${pid.slice(0,6)}`);
   });
+}
+
+// ══════════════════════════════════════════
+//  HOST TRANSFER
+// ══════════════════════════════════════════
+let selectedTransferPeer = null;
+
+function openTransferModal() {
+  const modal = document.getElementById('transfer-modal');
+  const list  = document.getElementById('transfer-list');
+  selectedTransferPeer = null;
+  document.getElementById('transfer-confirm-btn').disabled = true;
+  list.innerHTML = '';
+
+  const entries = Object.entries(activeConns);
+  if (!entries.length) {
+    list.innerHTML='<div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:12px">No listeners connected</div>';
+  } else {
+    entries.forEach(([pid,{name,latency}],i) => {
+      const col = COLORS[i%COLORS.length];
+      const div = document.createElement('div');
+      div.className = 'transfer-item';
+      div.dataset.pid = pid;
+      div.innerHTML = `
+        <div class="transfer-avatar" style="background:${col}22;color:${col}">${name[0].toUpperCase()}</div>
+        <div class="transfer-info">
+          <div class="transfer-name">${name}</div>
+          <div class="transfer-ping">${latency?latency+'ms ping':'measuring...'}</div>
+        </div>
+        <div class="transfer-check">✅</div>
+      `;
+      div.onclick = () => selectTransferPeer(pid, div);
+      list.appendChild(div);
+    });
+  }
+  modal.classList.add('open');
+}
+
+function selectTransferPeer(pid, el) {
+  document.querySelectorAll('.transfer-item').forEach(d => d.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedTransferPeer = pid;
+  document.getElementById('transfer-confirm-btn').disabled = false;
+}
+
+function closeTransferModal() {
+  document.getElementById('transfer-modal').classList.remove('open');
+  selectedTransferPeer = null;
+}
+
+function quickTransfer(pid, name) {
+  // Direct transfer without opening modal
+  if (!confirm(`Make ${name} the new host? You'll become a listener.`)) return;
+  executeTransfer(pid);
+}
+
+function confirmTransfer() {
+  if (!selectedTransferPeer) return;
+  const name = activeConns[selectedTransferPeer]?.name || 'the listener';
+  closeTransferModal();
+  executeTransfer(selectedTransferPeer);
+}
+
+function executeTransfer(targetPeerId) {
+  const target = activeConns[targetPeerId];
+  if (!target) { toast('❌ Listener not found'); return; }
+
+  // Build full state snapshot to hand off
+  const state = {
+    type: 'you-are-host',
+    roomCode: roomCode_,
+    hostName: hostName_,
+    roomPassword: roomPassword_,
+    queue: queueMeta(),
+    currentTrack,
+    isPlaying,
+    position: hostAudioEl.currentTime,
+    loopMode,
+    shuffleMode,
+  };
+
+  // Tell the target they're now host
+  try { target.conn.send(state); } catch(e) { toast('❌ Transfer failed'); return; }
+
+  // Tell everyone else that host changed
+  const newHostName = target.name;
+  broadcastExcept({ type:'host-changed', newHostName }, targetPeerId);
+
+  // Announce in chat
+  addChatMessage('host', null, `👑 ${newHostName} is now the host!`, true);
+  broadcast({ type:'chat', name:'System', text:`👑 ${newHostName} is now the host!` });
+
+  toast(`👑 Host transferred to ${newHostName}!`);
+
+  // Step down — pause host audio, destroy peer, show listener UI
+  setTimeout(() => {
+    hostAudioEl.pause();
+    if (myPeer) { myPeer.destroy(); myPeer = null; }
+    // Reset host state
+    activeConns  = {};
+    isPlaying    = false;
+    queue        = [];
+    currentTrack = -1;
+    // Hide host UI, show a "you stepped down" message on the join panel
+    document.getElementById('host-room-ui').style.display   = 'none';
+    document.getElementById('host-setup-card').style.display = 'block';
+    document.getElementById('host-setup-card').querySelector('button').disabled = false;
+    document.getElementById('host-conn-steps').style.display = 'none';
+    document.getElementById('mini-player').style.display = 'none';
+    switchTab('join');
+    // Pre-fill join form so previous host can re-join as listener
+    document.getElementById('join-name-input').value  = hostName_ + ' (prev host)';
+    document.getElementById('join-code-input').value  = roomCode_;
+    document.getElementById('join-password').value    = roomPassword_;
+    toast(`You stepped down. Join as listener to stay in the room.`, 5000);
+  }, 500);
 }
 
 // ── Copy/Share ──
@@ -1968,6 +2159,18 @@ function onHostMsg(msg) {
     leaveRoom();
     return;
   }
+  // Host transferred to THIS listener
+  if (msg.type==='you-are-host') {
+    handleBecomeHost(msg);
+    return;
+  }
+  // Host transferred to someone else
+  if (msg.type==='host-changed') {
+    addChatMessage('listener', null, `👑 ${msg.newHostName} is now the host!`, true);
+    toast(`👑 ${msg.newHostName} is now the host`);
+    document.getElementById('listener-host-badge').textContent = 'Host: ' + msg.newHostName;
+    return;
+  }
   // Ping
   if (msg.type==='ping') {
     if(listenerConn?.open) try{listenerConn.send({type:'pong',t:msg.t});}catch(e){}
@@ -2165,6 +2368,76 @@ function voteTrack(index, e) {
   if (listenerConn?.open) listenerConn.send({ type:'vote', trackIndex:index });
   toast('👍 Vote sent!');
   renderListenerQueue();
+}
+
+// ══════════════════════════════════════════
+//  BECOME HOST (transfer received)
+// ══════════════════════════════════════════
+async function handleBecomeHost(state) {
+  toast('👑 You are now the host! Taking control...', 5000);
+
+  // Show crown badge on listener UI briefly
+  const crown = document.getElementById('listener-crown');
+  if (crown) crown.style.display = 'inline-flex';
+
+  // Destroy old listener peer connection
+  if (listenerConn) { listenerConn.close(); listenerConn = null; }
+  if (myPeer) { myPeer.destroy(); myPeer = null; }
+  if (listenerAudio) { listenerAudio.pause(); }
+
+  // Restore host state from received snapshot
+  hostName_      = state.hostName;
+  roomCode_      = state.roomCode;
+  roomPassword_  = state.roomPassword || '';
+  loopMode       = state.loopMode || false;
+  shuffleMode    = state.shuffleMode || false;
+  activeConns    = {};
+  queue          = [];
+  currentTrack   = -1;
+  isPlaying      = false;
+
+  // Switch to host tab and show room UI
+  switchTab('host');
+  document.getElementById('host-setup-card').style.display  = 'none';
+  document.getElementById('host-room-ui').style.display     = 'block';
+  document.getElementById('host-code-display').textContent  = roomCode_;
+  document.getElementById('listener-room-ui').style.display = 'none';
+
+  // Restore queue metadata (no audio files — new host must re-upload)
+  // But show the queue names so they know what was playing
+  if (state.queue?.length) {
+    // Populate display-only queue entries
+    state.queue.forEach(t => {
+      queue.push({ file:null, title:t.title, artist:t.artist||'', album:t.album||'', artUrl:null });
+    });
+    currentTrack = state.currentTrack ?? 0;
+    // Show track info in player
+    document.getElementById('upload-zone').style.display       = 'none';
+    document.getElementById('host-track-display').style.display = 'flex';
+    document.getElementById('host-track-title').textContent    = queue[currentTrack]?.title || '—';
+    document.getElementById('host-track-artist').textContent   = queue[currentTrack]?.artist || 'Unknown Artist';
+    document.getElementById('host-controls').style.display     = 'block';
+    renderHostQueue();
+    // Notify they need to re-upload
+    setTimeout(() => toast('⚠️ Re-upload the songs to continue playback — queue names are restored', 6000), 1500);
+  }
+
+  // Re-init peer with same room code so listeners reconnect automatically
+  try {
+    const { peer } = await initPeer('syncbeat-' + roomCode_);
+    myPeer = peer;
+    peer.on('connection', onListenerConn);
+    buildEQ('host-eq');
+    // Update stat badges
+    document.getElementById('stat-listeners').textContent = '0';
+    document.getElementById('stat-queue').textContent = queue.length;
+    const badge = document.getElementById('listeners-badge');
+    badge.className = 'badge badge-idle';
+    badge.innerHTML = 'Waiting';
+    toast(`✅ You're live as host on room ${roomCode_}! Listeners will reconnect shortly.`, 6000);
+  } catch(e) {
+    toast('❌ Could not claim host peer. Room may need a new code.');
+  }
 }
 
 function leaveRoom() {
