@@ -509,6 +509,46 @@ input[type=range]::-webkit-slider-thumb {
 }
 .chat-send:hover { transform:scale(1.05); }
 
+/* ── Reply system ── */
+.chat-reply-preview {
+  display:none; align-items:center; gap:10px;
+  background:var(--surface); border:1px solid var(--border);
+  border-left:3px solid var(--gold);
+  border-radius:8px; padding:8px 12px; margin-bottom:8px;
+  position:relative; animation:msgIn 0.15s ease;
+}
+.chat-reply-preview.visible { display:flex; }
+.chat-reply-preview-inner { flex:1; overflow:hidden; }
+.chat-reply-preview-name { font-size:0.6rem; font-weight:700; color:var(--gold); margin-bottom:2px; }
+.chat-reply-preview-text { font-size:0.72rem; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chat-reply-cancel {
+  width:22px;height:22px;border-radius:50%;border:none;
+  background:var(--border2);color:var(--text2);cursor:pointer;
+  font-size:0.7rem;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0; transition:all var(--transition);
+}
+.chat-reply-cancel:hover { background:var(--rose);color:#fff; }
+
+/* Quoted message inside bubble */
+.chat-quoted {
+  background:var(--bg2); border-left:3px solid var(--gold);
+  border-radius:6px; padding:6px 10px; margin-bottom:6px;
+  font-size:0.68rem; cursor:pointer;
+}
+.chat-quoted-name { font-weight:700; color:var(--gold); margin-bottom:2px; font-size:0.6rem; }
+.chat-quoted-text { color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* Reply button on hover */
+.chat-msg:hover .chat-reply-btn { opacity:1; }
+.chat-reply-btn {
+  opacity:0; transition:opacity var(--transition);
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:99px; padding:3px 8px; font-size:0.65rem;
+  cursor:pointer; color:var(--text2); white-space:nowrap;
+  align-self:center; flex-shrink:0;
+}
+.chat-reply-btn:hover { border-color:var(--gold); color:var(--gold); }
+
 /* ═══════════════════════════════════════════
    REACTIONS
 ═══════════════════════════════════════════ */
@@ -884,9 +924,18 @@ input[type=range]::-webkit-slider-thumb {
         <div class="card-label">💬 Live Chat</div>
         <div class="chat-panel">
           <div class="chat-messages" id="host-chat-messages"></div>
-          <div class="chat-input-row">
-            <input class="chat-input" id="host-chat-input" placeholder="Say something..." maxlength="200"
-              onkeydown="if(event.key==='Enter')sendChat('host')">
+        <div class="chat-input-row">
+            <div style="flex:1;display:flex;flex-direction:column;gap:0">
+              <div class="chat-reply-preview" id="host-reply-preview">
+                <div class="chat-reply-preview-inner">
+                  <div class="chat-reply-preview-name"></div>
+                  <div class="chat-reply-preview-text"></div>
+                </div>
+                <button class="chat-reply-cancel" onclick="cancelReply('host')">✕</button>
+              </div>
+              <input class="chat-input" id="host-chat-input" placeholder="Say something..." maxlength="200"
+                onkeydown="if(event.key==='Enter')sendChat('host')">
+            </div>
             <button class="chat-send" onclick="sendChat('host')">➤</button>
           </div>
         </div>
@@ -980,8 +1029,17 @@ input[type=range]::-webkit-slider-thumb {
         <div class="chat-panel">
           <div class="chat-messages" id="listener-chat-messages"></div>
           <div class="chat-input-row">
-            <input class="chat-input" id="listener-chat-input" placeholder="Say something..." maxlength="200"
-              onkeydown="if(event.key==='Enter')sendChat('listener')">
+            <div style="flex:1;display:flex;flex-direction:column;gap:0">
+              <div class="chat-reply-preview" id="listener-reply-preview">
+                <div class="chat-reply-preview-inner">
+                  <div class="chat-reply-preview-name"></div>
+                  <div class="chat-reply-preview-text"></div>
+                </div>
+                <button class="chat-reply-cancel" onclick="cancelReply('listener')">✕</button>
+              </div>
+              <input class="chat-input" id="listener-chat-input" placeholder="Say something..." maxlength="200"
+                onkeydown="if(event.key==='Enter')sendChat('listener')">
+            </div>
             <button class="chat-send" onclick="sendChat('listener')">➤</button>
           </div>
         </div>
@@ -1368,20 +1426,25 @@ function queueMeta() {
 function hostNext() {
   if (!queue.length) return;
   let next;
-  if (shuffleMode) {
-    next = Math.floor(Math.random() * queue.length);
-  } else {
-    next = (currentTrack + 1) % queue.length;
-  }
+  if (shuffleMode) next = Math.floor(Math.random() * queue.length);
+  else next = (currentTrack + 1) % queue.length;
   loadTrack(next);
-  if (isPlaying) { hostAudioEl.play(); broadcast({ type:'play', position:0, trackIndex:next, trackName:queue[next]?.title }); }
+  if (isPlaying) {
+    const playAt = Date.now() + PLAY_COUNTDOWN_MS;
+    setTimeout(() => { hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
+    broadcastScheduled({ type:'scheduled-play', position:0, playAt, trackIndex:next, trackName:queue[next]?.title });
+  }
 }
 
 function hostPrev() {
   if (!queue.length) return;
   const prev = (currentTrack - 1 + queue.length) % queue.length;
   loadTrack(prev);
-  if (isPlaying) { hostAudioEl.play(); broadcast({ type:'play', position:0, trackIndex:prev, trackName:queue[prev]?.title }); }
+  if (isPlaying) {
+    const playAt = Date.now() + PLAY_COUNTDOWN_MS;
+    setTimeout(() => { hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
+    broadcastScheduled({ type:'scheduled-play', position:0, playAt, trackIndex:prev, trackName:queue[prev]?.title });
+  }
 }
 
 function toggleLoop() {
@@ -1398,19 +1461,31 @@ function toggleShuffle() {
   broadcast({ type:'shuffle', shuffleMode });
 }
 
+// ── Scheduled play: everyone starts at the same clock time ──
+const PLAY_COUNTDOWN_MS = 350;
+
 function togglePlay() {
   if (!queue.length || currentTrack < 0) { toast('⚠️ Upload a song first'); return; }
   if (hostAudioEl.paused) {
-    hostAudioEl.play();
+    const playAt = Date.now() + PLAY_COUNTDOWN_MS;
+    const position = hostAudioEl.currentTime;
+    setTimeout(() => { hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
     isPlaying = true;
     setHostPlayUI(true);
-    broadcast({ type:'play', position:hostAudioEl.currentTime, trackIndex:currentTrack, trackName:queue[currentTrack]?.title });
+    broadcastScheduled({ type:'scheduled-play', position, playAt,
+      trackIndex:currentTrack, trackName:queue[currentTrack]?.title });
   } else {
     hostAudioEl.pause();
     isPlaying = false;
     setHostPlayUI(false);
     broadcast({ type:'pause', position:hostAudioEl.currentTime });
   }
+}
+
+function broadcastScheduled(msg) {
+  Object.values(activeConns).forEach(({conn}) => {
+    if(conn.open) try { conn.send({...msg}); } catch(e){}
+  });
 }
 
 function setHostPlayUI(playing) {
@@ -1531,8 +1606,8 @@ function onListenerConn(conn) {
     if (msg.type==='request-file') sendFileToConn(conn, msg.trackIndex ?? currentTrack);
     if (msg.type==='chat') {
       const c = activeConns[conn.peer];
-      addChatMessage('host', c?.name||'?', msg.text);
-      broadcastExcept({ type:'chat', name:c?.name||'?', text:msg.text, color:msg.color }, conn.peer);
+      addChatMessage('host', c?.name||'?', msg.text, false, msg.replyTo||null);
+      broadcastExcept({ type:'chat', name:c?.name||'?', text:msg.text, color:msg.color, replyTo:msg.replyTo||null }, conn.peer);
     }
     if (msg.type==='reaction') {
       spawnReaction(msg.emoji);
@@ -1694,46 +1769,104 @@ function downloadShareCard() {
 //  CHAT
 // ══════════════════════════════════════════
 const chatColors = {};
+// Reply state — tracks which message is being replied to per side
+const replyState = { host: null, listener: null };
+// { name, text, msgId }
 function getChatColor(name) {
   if (!chatColors[name]) chatColors[name] = COLORS[Object.keys(chatColors).length % COLORS.length];
   return chatColors[name];
 }
-function addChatMessage(side, name, text, isSystem=false) {
+
+let msgIdCounter = 0;
+
+function addChatMessage(side, name, text, isSystem=false, replyTo=null) {
   const listId = side==='host' ? 'host-chat-messages' : 'listener-chat-messages';
-  const el = document.getElementById(listId); if(!el)return;
-  const isMe = (side==='host' && name===null && !isSystem) || (side==='listener' && name===null && !isSystem);
+  const el = document.getElementById(listId); if(!el) return;
+  const msgId = 'msg-'+(++msgIdCounter);
   const div = document.createElement('div');
+
   if (isSystem) {
     div.className='chat-msg system';
     div.innerHTML=`<div class="chat-bubble"><div class="chat-text">${text}</div></div>`;
   } else {
-    const n = name || (side==='host'?hostName_:lastJoinName);
+    const n = name || (side==='host' ? hostName_ : lastJoinName);
     const col = getChatColor(n);
     const isOwnMsg = (side==='host' && !name) || (side==='listener' && !name);
-    div.className='chat-msg'+(isOwnMsg?' me':'');
-    div.innerHTML=`
-      <div class="chat-avatar" style="background:${col}22;color:${col}">${n[0].toUpperCase()}</div>
-      <div class="chat-bubble">
-        <div class="chat-name">${n}</div>
-        <div class="chat-text">${text.replace(/</g,'&lt;')}</div>
-      </div>
-    `;
+    div.className = 'chat-msg' + (isOwnMsg?' me':'');
+    div.id = msgId;
+
+    // Build quoted reply block if replying
+    const quotedHTML = replyTo ? `
+      <div class="chat-quoted" onclick="scrollToMsg('${replyTo.msgId}')">
+        <div class="chat-quoted-name">↩ ${replyTo.name}</div>
+        <div class="chat-quoted-text">${replyTo.text.replace(/</g,'&lt;')}</div>
+      </div>` : '';
+
+    if (isOwnMsg) {
+      div.innerHTML=`
+        <button class="chat-reply-btn" onclick="startReply('${side}','${n}','${text.replace(/'/g,"\\'").slice(0,60)}','${msgId}')">↩ Reply</button>
+        <div class="chat-bubble">
+          <div class="chat-name">${n}</div>
+          ${quotedHTML}
+          <div class="chat-text">${text.replace(/</g,'&lt;')}</div>
+        </div>
+        <div class="chat-avatar" style="background:${col}22;color:${col}">${n[0].toUpperCase()}</div>
+      `;
+    } else {
+      div.innerHTML=`
+        <div class="chat-avatar" style="background:${col}22;color:${col}">${n[0].toUpperCase()}</div>
+        <div class="chat-bubble">
+          <div class="chat-name">${n}</div>
+          ${quotedHTML}
+          <div class="chat-text">${text.replace(/</g,'&lt;')}</div>
+        </div>
+        <button class="chat-reply-btn" onclick="startReply('${side}','${n}','${text.replace(/'/g,"\\'").slice(0,60)}','${msgId}')">↩ Reply</button>
+      `;
+    }
   }
   el.appendChild(div);
   el.scrollTop = el.scrollHeight;
+  return msgId;
+}
+
+function startReply(side, name, text, msgId) {
+  replyState[side] = { name, text, msgId };
+  const previewId = side==='host' ? 'host-reply-preview' : 'listener-reply-preview';
+  const preview = document.getElementById(previewId);
+  if (preview) {
+    preview.classList.add('visible');
+    preview.querySelector('.chat-reply-preview-name').textContent = '↩ Replying to ' + name;
+    preview.querySelector('.chat-reply-preview-text').textContent = text;
+  }
+  const inputId = side==='host' ? 'host-chat-input' : 'listener-chat-input';
+  document.getElementById(inputId)?.focus();
+}
+
+function cancelReply(side) {
+  replyState[side] = null;
+  const previewId = side==='host' ? 'host-reply-preview' : 'listener-reply-preview';
+  document.getElementById(previewId)?.classList.remove('visible');
+}
+
+function scrollToMsg(msgId) {
+  const el = document.getElementById(msgId);
+  if (el) { el.scrollIntoView({behavior:'smooth', block:'center'}); el.style.outline='2px solid var(--gold)'; setTimeout(()=>el.style.outline='',1200); }
 }
 
 function sendChat(side) {
   const inputId = side==='host' ? 'host-chat-input' : 'listener-chat-input';
   const input = document.getElementById(inputId);
-  const text = input.value.trim(); if(!text)return;
+  const text = input.value.trim(); if(!text) return;
   input.value='';
+  const reply = replyState[side] || null;
+  cancelReply(side);
+
   if (side==='host') {
-    addChatMessage('host', null, text);
-    broadcast({ type:'chat', name:hostName_, text, color:getChatColor(hostName_) });
+    addChatMessage('host', null, text, false, reply);
+    broadcast({ type:'chat', name:hostName_, text, color:getChatColor(hostName_), replyTo:reply });
   } else {
-    addChatMessage('listener', null, text);
-    if (listenerConn?.open) listenerConn.send({ type:'chat', text, color:getChatColor(lastJoinName) });
+    addChatMessage('listener', null, text, false, reply);
+    if (listenerConn?.open) listenerConn.send({ type:'chat', text, color:getChatColor(lastJoinName), replyTo:reply });
   }
 }
 
@@ -1855,7 +1988,7 @@ function onHostMsg(msg) {
   }
   // Chat from host or other listeners
   if (msg.type==='chat') {
-    addChatMessage('listener', msg.name, msg.text);
+    addChatMessage('listener', msg.name, msg.text, false, msg.replyTo||null);
   }
   // Reaction
   if (msg.type==='reaction') spawnReaction(msg.emoji);
@@ -1924,7 +2057,36 @@ function onHostMsg(msg) {
     receivedChunks=[];
     toast('✅ Audio ready!');
   }
-  // Play
+  // Scheduled Play — all listeners target same absolute timestamp
+  if (msg.type==='scheduled-play') {
+    if(!listenerAudio?.src){
+      if(listenerConn?.open)listenerConn.send({type:'request-file',trackIndex:msg.trackIndex??0});
+      toast('⏳ Loading audio...');return;
+    }
+    const now = Date.now();
+    const waitMs = Math.max(0, msg.playAt - now); // how long to wait
+    if(msg.trackName) document.getElementById('listener-song-title').textContent=msg.trackName;
+    // Pre-seek so audio is ready at the right position before play() is called
+    listenerAudio.currentTime = msg.position || 0;
+    clearTimeout(listenerAudio._playTimer);
+    listenerAudio._playTimer = setTimeout(() => {
+      listenerAudio.play().then(() => {
+        setListenerPlayUI(true);
+        toast('🎵 Playing in sync!');
+      }).catch(() => {
+        toast('🔔 Tap anywhere to start audio');
+        const resume = () => {
+          listenerAudio.currentTime = msg.position || 0;
+          listenerAudio.play().catch(()=>{});
+          setListenerPlayUI(true);
+        };
+        document.addEventListener('click', resume, {once:true});
+        document.addEventListener('touchstart', resume, {once:true});
+      });
+    }, waitMs);
+    return;
+  }
+  // Legacy play fallback (for welcome sync)
   if (msg.type==='play') {
     if(!listenerAudio?.src){
       if(listenerConn?.open)listenerConn.send({type:'request-file',trackIndex:msg.trackIndex??0});
@@ -1936,7 +2098,6 @@ function onHostMsg(msg) {
     listenerAudio.play().then(()=>{
       setListenerPlayUI(true);
       if(msg.trackName)document.getElementById('listener-song-title').textContent=msg.trackName;
-      toast('🎵 Playing!');
     }).catch(()=>{
       toast('🔔 Tap anywhere to start audio');
       const resume=()=>{listenerAudio.currentTime=Math.max(0,pos+0.1);listenerAudio.play().catch(()=>{});setListenerPlayUI(true);};
