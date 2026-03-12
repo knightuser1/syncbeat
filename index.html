@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SyncBeat — Listen Together</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -383,8 +384,74 @@ input[type=range]::-webkit-slider-thumb {
 }
 
 /* ═══════════════════════════════════════════
-   QUEUE / PLAYLIST
+   SOURCE SWITCHER & YOUTUBE
 ═══════════════════════════════════════════ */
+.source-tabs {
+  display:flex; background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:3px; gap:3px; margin-bottom:16px;
+}
+.source-tab {
+  flex:1; padding:9px 8px; border:none; border-radius:8px;
+  font-family:'Syne',sans-serif; font-size:0.75rem; font-weight:700;
+  color:var(--text2); background:transparent; cursor:pointer;
+  transition:all var(--transition); display:flex; align-items:center;
+  justify-content:center; gap:6px;
+}
+.source-tab.active {
+  background:linear-gradient(135deg,var(--gold),var(--rose));
+  color:#0c0c10; box-shadow:0 3px 12px rgba(245,200,66,0.3);
+}
+.source-tab:not(.active):hover { color:var(--text); background:var(--card2); }
+
+/* YouTube compartment */
+.yt-compartment { display:none; }
+.yt-compartment.active { display:block; animation:panelIn 0.25s ease; }
+.upload-compartment { display:none; }
+.upload-compartment.active { display:block; animation:panelIn 0.25s ease; }
+
+.yt-paste-row { display:flex; gap:8px; margin-bottom:14px; }
+.yt-paste-input {
+  flex:1; background:var(--surface); border:1.5px solid var(--border);
+  color:var(--text); padding:11px 14px; border-radius:10px;
+  font-family:'Syne',sans-serif; font-size:0.82rem; outline:none;
+  transition:border-color var(--transition);
+}
+.yt-paste-input:focus { border-color:var(--rose); box-shadow:0 0 0 3px rgba(255,77,114,0.1); }
+.yt-paste-input::placeholder { color:var(--text3); }
+
+.yt-preview {
+  display:none; background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; overflow:hidden; margin-bottom:14px;
+}
+.yt-preview.visible { display:block; animation:panelIn 0.2s ease; }
+.yt-thumb-wrap { position:relative; width:100%; aspect-ratio:16/9; background:#000; }
+.yt-thumb-wrap img { width:100%;height:100%;object-fit:cover; display:block; }
+.yt-thumb-overlay {
+  position:absolute;inset:0;
+  background:linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%);
+  display:flex;align-items:flex-end;padding:12px;
+}
+.yt-play-badge {
+  background:linear-gradient(135deg,var(--rose),var(--gold));
+  color:#000; font-weight:800; font-size:0.7rem; padding:5px 12px;
+  border-radius:99px; letter-spacing:1px;
+}
+.yt-meta { padding:12px 14px; }
+.yt-title { font-weight:800; font-size:0.88rem; margin-bottom:3px; line-height:1.4; }
+.yt-channel { font-size:0.68rem; color:var(--text2); }
+
+/* Hidden YouTube iframe container */
+#yt-host-iframe-wrap, #yt-listener-iframe-wrap {
+  position:fixed; bottom:-9999px; left:-9999px; width:1px; height:1px;
+  pointer-events:none; opacity:0;
+}
+
+/* Listener YouTube card */
+.yt-listener-card {
+  display:none; background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; overflow:hidden; margin-bottom:14px;
+}
+.yt-listener-card.visible { display:block; animation:panelIn 0.3s ease; }
 .queue-list { display:flex;flex-direction:column;gap:6px;margin-top:10px;max-height:260px;overflow-y:auto; }
 .queue-list::-webkit-scrollbar { width:4px; }
 .queue-list::-webkit-scrollbar-track { background:transparent; }
@@ -612,17 +679,49 @@ input[type=range]::-webkit-slider-thumb {
 .listener-hero {
   background: linear-gradient(160deg, rgba(245,200,66,0.06), rgba(0,229,200,0.04));
   border: 1.5px solid rgba(245,200,66,0.15);
-  border-radius: var(--r); padding:28px 20px; text-align:center; margin-bottom:16px;
+  border-radius: var(--r); padding:0 0 24px; text-align:center; margin-bottom:16px;
+  overflow:hidden; position:relative;
 }
+/* Rainbow strip at top — same as host */
+.listener-art-strip {
+  height:5px;
+  background: linear-gradient(90deg, var(--gold), var(--rose), var(--violet), var(--teal), var(--gold));
+  background-size: 300% 100%;
+  animation: artStrip 4s linear infinite;
+  margin-bottom:24px;
+}
+.listener-art-strip.paused { animation-play-state:paused; }
+
 .listener-disc-big {
-  width:100px;height:100px;border-radius:50%;margin:0 auto 18px;
+  width:110px;height:110px;border-radius:50%;margin:0 auto 18px;
   background:linear-gradient(135deg,var(--gold),var(--rose));
   display:flex;align-items:center;justify-content:center;font-size:2.4rem;
-  position:relative; box-shadow:0 0 50px rgba(245,200,66,0.3);
+  position:relative;
+  box-shadow: 0 0 0 0 rgba(245,200,66,0.4);
+  animation: discGlow 2.5s ease-in-out infinite;
 }
-.listener-disc-big::after { content:'';position:absolute;width:28px;height:28px;background:var(--bg);border-radius:50%; }
-.listener-disc-big.spinning { animation:discSpin 3s linear infinite; }
-.listener-disc-big.spinning::after { animation:discSpin 3s linear infinite reverse; }
+@keyframes discGlow {
+  0%,100% { box-shadow: 0 0 20px 4px rgba(245,200,66,0.25), 0 0 50px 8px rgba(255,77,114,0.1); }
+  50%      { box-shadow: 0 0 40px 10px rgba(245,200,66,0.45), 0 0 80px 20px rgba(255,77,114,0.2); }
+}
+.listener-disc-big.spinning { animation: discSpin 3s linear infinite, discGlow 2.5s ease-in-out infinite; }
+.listener-disc-big::after { content:'';position:absolute;width:28px;height:28px;background:var(--bg);border-radius:50%;z-index:1; }
+
+/* EQ bars on listener side — full size */
+.listener-eq-full {
+  display:flex;align-items:flex-end;gap:3px;
+  height:36px; justify-content:center; margin:12px auto 4px;
+}
+.listener-eq-full .eq-bar {
+  width:4px; min-height:3px; border-radius:2px 2px 0 0;
+  background:linear-gradient(to top, var(--teal), var(--violet));
+  transform-origin:bottom;
+  animation:eqAnim 0.6s ease-in-out infinite alternate;
+}
+.listener-eq-full .eq-bar:nth-child(2n)  { background:linear-gradient(to top,var(--gold),var(--rose)); animation-delay:0.1s; }
+.listener-eq-full .eq-bar:nth-child(3n)  { animation-delay:0.2s; }
+.listener-eq-full .eq-bar:nth-child(5n)  { animation-delay:0.3s; }
+.listener-eq-full.paused .eq-bar { animation-play-state:paused; transform:scaleY(0.15); }
 
 /* ═══════════════════════════════════════════
    MOBILE BOTTOM PLAYER
@@ -786,6 +885,9 @@ input[type=range]::-webkit-slider-thumb {
 
 <!-- Hidden audio -->
 <audio id="host-audio-el"></audio>
+<!-- Hidden YouTube players -->
+<div id="yt-host-iframe-wrap"></div>
+<div id="yt-listener-iframe-wrap"></div>
 
 <div class="app">
 
@@ -885,56 +987,112 @@ input[type=range]::-webkit-slider-thumb {
         <div class="player-body">
           <div class="card-label">🎵 Now Playing</div>
 
-          <!-- Upload zone shown when queue empty -->
-          <div class="upload-zone" id="upload-zone">
-            <input type="file" id="music-input" accept="audio/*" multiple onchange="filesAdded(this)">
-            <div class="upload-icon">🎶</div>
-            <div class="upload-text">Drop songs here or <strong>click to browse</strong></div>
-            <div style="color:var(--text3);font-size:0.62rem;margin-top:4px">MP3 · WAV · OGG · M4A — multiple files OK</div>
+          <!-- Source switcher tabs -->
+          <div class="source-tabs">
+            <button class="source-tab active" id="src-tab-upload" onclick="switchSource('upload')">📁 Upload Files</button>
+            <button class="source-tab" id="src-tab-youtube" onclick="switchSource('youtube')">▶️ YouTube</button>
           </div>
 
-          <!-- Track display -->
-          <div class="player-top" id="host-track-display" style="display:none">
-            <div class="album-art" id="host-album-art">
-              <span id="host-art-emoji">🎵</span>
-              <img id="host-art-img" style="display:none;position:absolute;inset:0" alt="">
-              <div class="disc-hole"></div>
+          <!-- ── UPLOAD COMPARTMENT ── -->
+          <div class="upload-compartment active" id="upload-compartment">
+            <!-- Upload zone shown when queue empty -->
+            <div class="upload-zone" id="upload-zone">
+              <input type="file" id="music-input" accept="audio/*" multiple onchange="filesAdded(this)">
+              <div class="upload-icon">🎶</div>
+              <div class="upload-text">Drop songs here or <strong>click to browse</strong></div>
+              <div style="color:var(--text3);font-size:0.62rem;margin-top:4px">MP3 · WAV · OGG · M4A — multiple files OK</div>
             </div>
-            <div class="track-info-col">
-              <div class="track-title" id="host-track-title">—</div>
-              <div class="track-artist" id="host-track-artist">Unknown Artist</div>
-              <div class="track-album" id="host-track-album"></div>
+
+            <!-- Track display -->
+            <div class="player-top" id="host-track-display" style="display:none">
+              <div class="album-art" id="host-album-art">
+                <span id="host-art-emoji">🎵</span>
+                <img id="host-art-img" style="display:none;position:absolute;inset:0" alt="">
+                <div class="disc-hole"></div>
+              </div>
+              <div class="track-info-col">
+                <div class="track-title" id="host-track-title">—</div>
+                <div class="track-artist" id="host-track-artist">Unknown Artist</div>
+                <div class="track-album" id="host-track-album"></div>
+              </div>
+              <div class="eq-bars paused" id="host-eq"></div>
             </div>
-            <div class="eq-bars paused" id="host-eq"></div>
+
+            <!-- Upload Controls -->
+            <div id="host-controls" style="display:none">
+              <div class="progress-wrap" id="seek-bar" onclick="hostSeek(event)">
+                <div class="progress-fill" id="seek-fill" style="width:0%"></div>
+              </div>
+              <div class="time-row">
+                <span id="t-curr">0:00</span>
+                <span id="t-total">0:00</span>
+              </div>
+              <div class="ctrl-row">
+                <button class="ctrl-btn" id="btn-shuffle" onclick="toggleShuffle()" title="Shuffle">🔀</button>
+                <button class="ctrl-btn" onclick="hostPrev()" title="Previous">⏮</button>
+                <button class="ctrl-btn play-main" id="play-btn" onclick="togglePlay()">▶</button>
+                <button class="ctrl-btn" onclick="hostNext()" title="Next">⏭</button>
+                <button class="ctrl-btn" id="btn-loop" onclick="toggleLoop()" title="Loop">🔁</button>
+              </div>
+              <div class="vol-row">
+                <span style="font-size:0.85rem">🔈</span>
+                <input type="range" id="host-vol" min="0" max="1" step="0.02" value="0.8" oninput="hostAudioEl.volume=this.value">
+                <span style="font-size:0.85rem">🔊</span>
+              </div>
+              <div style="text-align:center;margin-top:8px">
+                <span style="font-size:0.65rem;color:var(--text3)" id="sync-status-text">—</span>
+              </div>
+            </div>
           </div>
 
-          <!-- Progress -->
-          <div id="host-controls" style="display:none">
-            <div class="progress-wrap" id="seek-bar" onclick="hostSeek(event)">
-              <div class="progress-fill" id="seek-fill" style="width:0%"></div>
+          <!-- ── YOUTUBE COMPARTMENT ── -->
+          <div class="yt-compartment" id="yt-compartment">
+            <div style="background:rgba(255,77,114,0.06);border:1px solid rgba(255,77,114,0.2);border-radius:10px;padding:10px 13px;margin-bottom:14px;font-size:0.72rem;color:var(--text2);line-height:1.6">
+              🎬 Paste any YouTube link — everyone in the room loads the same video silently. Host controls play/pause/seek for everyone.
             </div>
-            <div class="time-row">
-              <span id="t-curr">0:00</span>
-              <span id="t-total">0:00</span>
+            <!-- Paste row -->
+            <div class="yt-paste-row">
+              <input class="yt-paste-input" id="yt-url-input" placeholder="Paste YouTube link... youtube.com/watch?v=..." oninput="ytUrlChanged(this.value)">
+              <button class="btn btn-rose btn-sm" onclick="ytLoadLink()">Load ▶</button>
             </div>
-            <!-- Controls -->
-            <div class="ctrl-row">
-              <button class="ctrl-btn" id="btn-shuffle" onclick="toggleShuffle()" title="Shuffle">🔀</button>
-              <button class="ctrl-btn" onclick="hostPrev()" title="Previous">⏮</button>
-              <button class="ctrl-btn play-main" id="play-btn" onclick="togglePlay()">▶</button>
-              <button class="ctrl-btn" onclick="hostNext()" title="Next">⏭</button>
-              <button class="ctrl-btn" id="btn-loop" onclick="toggleLoop()" title="Loop">🔁</button>
+            <!-- Preview card -->
+            <div class="yt-preview" id="yt-preview">
+              <div class="yt-thumb-wrap">
+                <img id="yt-thumb" src="" alt="">
+                <div class="yt-thumb-overlay"><span class="yt-play-badge">▶ READY TO SYNC</span></div>
+              </div>
+              <div class="yt-meta">
+                <div class="yt-title" id="yt-title-display">—</div>
+                <div class="yt-channel" id="yt-channel-display">YouTube</div>
+              </div>
             </div>
-            <!-- Volume -->
-            <div class="vol-row">
-              <span style="font-size:0.85rem">🔈</span>
-              <input type="range" id="host-vol" min="0" max="1" step="0.02" value="0.8" oninput="hostAudioEl.volume=this.value">
-              <span style="font-size:0.85rem">🔊</span>
+            <!-- YouTube controls (same style as upload) -->
+            <div id="yt-controls" style="display:none">
+              <div class="progress-wrap" id="yt-seek-bar" onclick="ytHostSeek(event)">
+                <div class="progress-fill" id="yt-seek-fill" style="width:0%"></div>
+              </div>
+              <div class="time-row">
+                <span id="yt-t-curr">0:00</span>
+                <span id="yt-t-total">0:00</span>
+              </div>
+              <div class="ctrl-row">
+                <button class="ctrl-btn play-main" id="yt-play-btn" onclick="ytTogglePlay()">▶</button>
+              </div>
+              <div class="vol-row">
+                <span style="font-size:0.85rem">🔈</span>
+                <input type="range" id="yt-vol" min="0" max="100" step="2" value="80" oninput="ytSetVolume(this.value)">
+                <span style="font-size:0.85rem">🔊</span>
+              </div>
+              <div style="text-align:center;margin-top:8px">
+                <span style="font-size:0.65rem;color:var(--text3)" id="yt-sync-status">—</span>
+              </div>
             </div>
-            <div style="text-align:center;margin-top:8px">
-              <span style="font-size:0.65rem;color:var(--text3)" id="sync-status-text">—</span>
+            <!-- No video loaded state -->
+            <div id="yt-empty" style="text-align:center;padding:24px 0;color:var(--text3);font-size:0.78rem">
+              Paste a YouTube link above to get started
             </div>
           </div>
+
         </div>
       </div>
 
@@ -1039,17 +1197,20 @@ input[type=range]::-webkit-slider-thumb {
 
       <!-- Hero -->
       <div class="listener-hero">
+        <div class="listener-art-strip paused" id="listener-art-strip"></div>
         <div class="listener-disc-big" id="listener-disc">🎵</div>
-        <div style="font-size:1.3rem;font-weight:800" id="listener-song-title">Waiting for host...</div>
+        <div style="font-size:1.3rem;font-weight:800;padding:0 16px" id="listener-song-title">Waiting for host...</div>
         <div style="color:var(--text2);font-size:0.75rem;margin-top:4px" id="listener-song-artist">Stand by</div>
-        <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <!-- Full EQ bars -->
+        <div class="listener-eq-full paused" id="listener-eq-full"></div>
+        <div style="margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
           <span class="badge badge-live" id="listener-status-badge"><span class="dot pulse"></span> Connected</span>
           <span class="badge badge-idle" id="listener-room-badge">——</span>
         </div>
         <!-- Crown shown when this listener becomes host -->
         <div class="host-crown" id="listener-crown" style="display:none">👑 You are now the Host!</div>
         <!-- Listener progress bar -->
-        <div style="margin-top:18px;padding:0 10px">
+        <div style="margin-top:18px;padding:0 16px">
           <div class="progress-wrap" style="cursor:default;height:3px">
             <div class="progress-fill" id="listener-progress" style="width:0%"></div>
           </div>
@@ -1059,10 +1220,24 @@ input[type=range]::-webkit-slider-thumb {
           </div>
         </div>
         <!-- Listener volume -->
-        <div class="vol-row" style="margin-top:14px;padding:0 10px">
+        <div class="vol-row" style="margin-top:14px;padding:0 16px">
           <span>🔈</span>
           <input type="range" id="listener-vol" min="0" max="1" step="0.02" value="0.8" oninput="setListenerVol(this.value)">
           <span>🔊</span>
+        </div>
+      </div>
+
+      <!-- YouTube listener card — shown when host is in YouTube mode -->
+      <div class="yt-listener-card" id="yt-listener-card">
+        <div class="yt-thumb-wrap" style="aspect-ratio:16/9">
+          <img id="yt-listener-thumb" src="" alt="" style="width:100%;height:100%;object-fit:cover">
+          <div class="yt-thumb-overlay">
+            <span class="yt-play-badge" id="yt-listener-status-badge">▶ SYNCING</span>
+          </div>
+        </div>
+        <div class="yt-meta">
+          <div class="yt-title" id="yt-listener-title">—</div>
+          <div class="yt-channel">YouTube · Synced by host</div>
         </div>
       </div>
 
@@ -1674,7 +1849,9 @@ function onListenerConn(conn) {
 
     conn.send({ type:'welcome', hostName:hostName_, roomCode:roomCode_,
       queue:queueMeta(), currentTrack, isPlaying, position:hostAudioEl.currentTime,
-      loopMode, shuffleMode });
+      loopMode, shuffleMode, activeSource,
+      ytVideoId: activeSource==='youtube' ? ytCurrentVideoId : '',
+      ytTitle:   activeSource==='youtube' ? ytCurrentTitle   : '' });
 
     // Send current track file
     if (queue.length && currentTrack >= 0) {
@@ -2155,6 +2332,7 @@ async function joinRoomAuto(code, name, pass) {
       document.getElementById('join-form-card').style.display    = 'none';
       document.getElementById('listener-room-ui').style.display  = 'block';
       document.getElementById('listener-room-badge').textContent = code;
+      buildEQ('listener-eq-full', 16);
       toast('✅ Back in the room as listener!');
     });
     conn.on('error', () => toast('⚠️ Could not rejoin — try manually'));
@@ -2200,6 +2378,7 @@ async function joinRoom() {
         document.getElementById('join-form-card').style.display='none';
         document.getElementById('listener-room-ui').style.display='block';
         document.getElementById('listener-room-badge').textContent = code;
+        buildEQ('listener-eq-full', 16);
         toast(`✅ Joined! Waiting for music...`);
       }, 600);
     });
@@ -2235,6 +2414,28 @@ function scheduleReconnect() {
 
 // ── Handle host messages ──
 function onHostMsg(msg) {
+  // Source switch
+  if (msg.type==='source-switch') {
+    const isYt = msg.source==='youtube';
+    document.getElementById('yt-listener-card').classList.toggle('visible', isYt);
+  }
+  // YouTube load
+  if (msg.type==='yt-load') {
+    ytListenerLoad(msg.videoId, msg.title||'');
+  }
+  // YouTube scheduled play
+  if (msg.type==='yt-play') {
+    ytListenerPlay(msg);
+    return;
+  }
+  // YouTube pause
+  if (msg.type==='yt-pause') {
+    ytListenerPause(msg);
+  }
+  // YouTube seek
+  if (msg.type==='yt-seek') {
+    ytListenerSeek(msg);
+  }
   // Auth fail
   if (msg.type==='auth-fail') {
     toast('❌ Wrong password. Cannot join this room.');
@@ -2265,6 +2466,11 @@ function onHostMsg(msg) {
     renderListenerQueue();
     if (msg.isPlaying) {
       document.getElementById('listener-song-title').textContent = listenerQueue[msg.currentTrack]?.title||'Playing...';
+    }
+    // If host is in YouTube mode, load the video
+    if (msg.activeSource==='youtube' && msg.ytVideoId) {
+      ytListenerLoad(msg.ytVideoId, msg.ytTitle||'');
+      document.getElementById('yt-listener-card').classList.add('visible');
     }
   }
   // Chat from host or other listeners
@@ -2403,8 +2609,14 @@ function onHostMsg(msg) {
 }
 
 function setListenerPlayUI(playing) {
-  const disc=document.getElementById('listener-disc');
-  disc.classList.toggle('spinning',playing);
+  const disc = document.getElementById('listener-disc');
+  disc.classList.toggle('spinning', playing);
+  // Rainbow strip
+  const strip = document.getElementById('listener-art-strip');
+  if (strip) strip.classList.toggle('paused', !playing);
+  // Full EQ bars
+  const eq = document.getElementById('listener-eq-full');
+  if (eq) eq.classList.toggle('paused', !playing);
   setListenerBadge(playing?'live':'idle', playing?'Synced ✓':'Paused');
   if(playing) document.getElementById('listener-song-artist').textContent = listenerQueue[listenerCurrentTrack]?.artist||'Playing live';
 }
@@ -2415,7 +2627,10 @@ function setListenerBadge(type, text) {
   b.innerHTML=type==='live'?`<span class="dot pulse"></span> ${text}`:`<span class="dot"></span> ${text}`;
 }
 
-function setListenerVol(v) { if(listenerAudio)listenerAudio.volume=parseFloat(v); }
+function setListenerVol(v) {
+  if (listenerAudio) listenerAudio.volume = parseFloat(v);
+  ytListenerSetVol(parseFloat(v));
+}
 
 function renderListenerQueue() {
   const list=document.getElementById('listener-queue-list');
@@ -2766,8 +2981,252 @@ window.sendChat = function(side) {
   anTrack('chat_sent');
 };
 
+// ══════════════════════════════════════════
+//  YOUTUBE SYNC ENGINE
+// ══════════════════════════════════════════
+let ytHostPlayer   = null;   // YT.Player on host
+let ytListenerPlayer = null; // YT.Player on listener
+let ytCurrentVideoId = '';
+let ytCurrentTitle   = '';
+let ytIsPlaying      = false;
+let ytProgressTimer  = null;
+let activeSource     = 'upload'; // 'upload' | 'youtube'
+
+// Called by YouTube IFrame API when ready
+window.onYouTubeIframeAPIReady = function() {
+  // Players created on demand
+};
+
+function switchSource(src) {
+  activeSource = src;
+  document.getElementById('src-tab-upload').classList.toggle('active', src==='upload');
+  document.getElementById('src-tab-youtube').classList.toggle('active', src==='youtube');
+  document.getElementById('upload-compartment').classList.toggle('active', src==='upload');
+  document.getElementById('yt-compartment').classList.toggle('active', src==='youtube');
+  // Pause whichever player is no longer active
+  if (src==='upload' && ytHostPlayer && ytIsPlaying) {
+    ytHostPlayer.pauseVideo();
+    ytIsPlaying=false;
+  }
+  if (src==='youtube' && isPlaying) {
+    hostAudioEl.pause(); isPlaying=false; setHostPlayUI(false);
+  }
+  broadcast({ type:'source-switch', source:src });
+}
+
+// ── URL parsing ──
+function ytExtractId(url) {
+  if (!url) return null;
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+    /^([a-zA-Z0-9_-]{11})$/
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+function ytUrlChanged(val) {
+  // Auto-load if valid URL detected while typing
+  if (ytExtractId(val)) {
+    document.getElementById('yt-preview').classList.remove('visible');
+  }
+}
+
+function ytLoadLink() {
+  const url = document.getElementById('yt-url-input').value.trim();
+  const vid = ytExtractId(url);
+  if (!vid) { toast('⚠️ Invalid YouTube link — paste the full URL'); return; }
+  ytLoadVideo(vid);
+}
+
+function ytLoadVideo(videoId, title='', autoplay=false) {
+  ytCurrentVideoId = videoId;
+  const thumb = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+  document.getElementById('yt-thumb').src = thumb;
+  document.getElementById('yt-title-display').textContent = title || 'Loading title...';
+  document.getElementById('yt-channel-display').textContent = 'YouTube';
+  document.getElementById('yt-preview').classList.add('visible');
+  document.getElementById('yt-empty').style.display = 'none';
+  document.getElementById('yt-controls').style.display = 'block';
+
+  // Update strip + eq to show YouTube mode active
+  document.getElementById('host-art-strip').classList.remove('paused');
+  document.getElementById('host-eq').classList.remove('paused');
+
+  // Create or load YouTube player
+  if (!ytHostPlayer) {
+    const div = document.createElement('div');
+    div.id = 'yt-host-player';
+    document.getElementById('yt-host-iframe-wrap').appendChild(div);
+    ytHostPlayer = new YT.Player('yt-host-player', {
+      width:'320', height:'180', videoId,
+      playerVars:{ autoplay:0, controls:0, disablekb:1, fs:0, rel:0, modestbranding:1 },
+      events:{
+        onReady: e => {
+          e.target.setVolume(parseInt(document.getElementById('yt-vol').value)||80);
+          if (title) ytUpdateTitle(e.target);
+          else ytFetchTitle(videoId, e.target);
+          if (autoplay) { e.target.playVideo(); ytIsPlaying=true; ytSetPlayUI(true); }
+          ytStartProgressTracker();
+        },
+        onStateChange: e => {
+          if (e.data===YT.PlayerState.PLAYING) { ytIsPlaying=true; ytSetPlayUI(true); }
+          if (e.data===YT.PlayerState.PAUSED)  { ytIsPlaying=false; ytSetPlayUI(false); }
+          if (e.data===YT.PlayerState.ENDED)   { ytIsPlaying=false; ytSetPlayUI(false); clearInterval(ytProgressTimer); }
+        }
+      }
+    });
+  } else {
+    ytHostPlayer.loadVideoById(videoId);
+    ytHostPlayer.pauseVideo();
+    ytIsPlaying=false; ytSetPlayUI(false);
+    setTimeout(()=>{ ytFetchTitle(videoId, ytHostPlayer); }, 800);
+  }
+
+  // Tell all listeners to load this video
+  broadcast({ type:'yt-load', videoId, title:title||ytCurrentTitle, source:'youtube' });
+  toast('🎬 YouTube video loaded — hit play to sync!');
+}
+
+function ytFetchTitle(videoId, player) {
+  // Use oEmbed to get title without API key
+  fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`)
+    .then(r=>r.json())
+    .then(d=>{
+      ytCurrentTitle = d.title||'YouTube Video';
+      document.getElementById('yt-title-display').textContent = ytCurrentTitle;
+      document.getElementById('yt-channel-display').textContent = d.author_name||'YouTube';
+      // Re-broadcast with real title
+      broadcast({ type:'yt-load', videoId, title:ytCurrentTitle, source:'youtube' });
+    }).catch(()=>{ ytCurrentTitle='YouTube Video'; });
+}
+
+function ytUpdateTitle(player) {
+  // Title already known
+}
+
+function ytTogglePlay() {
+  if (!ytHostPlayer) return;
+  if (ytIsPlaying) {
+    ytHostPlayer.pauseVideo();
+    broadcast({ type:'yt-pause', position:ytHostPlayer.getCurrentTime() });
+  } else {
+    const playAt = Date.now() + PLAY_COUNTDOWN_MS;
+    const position = ytHostPlayer.getCurrentTime();
+    setTimeout(()=>{ ytHostPlayer.playVideo(); }, PLAY_COUNTDOWN_MS);
+    ytIsPlaying=true; ytSetPlayUI(true);
+    broadcastScheduled({ type:'yt-play', position, playAt, videoId:ytCurrentVideoId, title:ytCurrentTitle });
+  }
+}
+
+function ytHostSeek(e) {
+  if (!ytHostPlayer) return;
+  const bar = document.getElementById('yt-seek-bar');
+  const dur = ytHostPlayer.getDuration();
+  if (!dur) return;
+  const pos = (e.offsetX/bar.offsetWidth)*dur;
+  ytHostPlayer.seekTo(pos, true);
+  broadcastSmall({ type:'yt-seek', position:pos, sentAt:performance.now() });
+}
+
+function ytSetVolume(v) {
+  if (ytHostPlayer) ytHostPlayer.setVolume(parseInt(v));
+}
+
+function ytSetPlayUI(playing) {
+  document.getElementById('yt-play-btn').textContent = playing?'⏸':'▶';
+  document.getElementById('host-art-strip').classList.toggle('paused', !playing);
+  document.getElementById('host-eq').classList.toggle('paused', !playing);
+  document.getElementById('yt-sync-status').textContent =
+    playing ? `📡 Syncing YouTube to ${Object.keys(activeConns).length} listener(s)` : '⏸ Paused';
+}
+
+function ytStartProgressTracker() {
+  clearInterval(ytProgressTimer);
+  ytProgressTimer = setInterval(()=>{
+    if (!ytHostPlayer || typeof ytHostPlayer.getCurrentTime!=='function') return;
+    const cur = ytHostPlayer.getCurrentTime()||0;
+    const dur = ytHostPlayer.getDuration()||1;
+    const pct = Math.min(100,(cur/dur)*100);
+    document.getElementById('yt-seek-fill').style.width  = pct+'%';
+    document.getElementById('yt-t-curr').textContent     = fmt(cur);
+    document.getElementById('yt-t-total').textContent    = fmt(dur);
+  }, 500);
+}
+
+// ── Listener YouTube handlers (called from onHostMsg) ──
+function ytListenerLoad(videoId, title) {
+  ytCurrentVideoId = videoId;
+  // Show listener YouTube card
+  const card = document.getElementById('yt-listener-card');
+  card.classList.add('visible');
+  document.getElementById('yt-listener-thumb').src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+  document.getElementById('yt-listener-title').textContent = title||'YouTube Video';
+  document.getElementById('yt-listener-status-badge').textContent = '⏳ LOADING';
+
+  // Create hidden listener player
+  if (!ytListenerPlayer) {
+    const div = document.createElement('div');
+    div.id = 'yt-listener-player';
+    document.getElementById('yt-listener-iframe-wrap').appendChild(div);
+    ytListenerPlayer = new YT.Player('yt-listener-player', {
+      width:'320', height:'180', videoId,
+      playerVars:{ autoplay:0, controls:0, disablekb:1, fs:0, rel:0, modestbranding:1 },
+      events:{
+        onReady: e => {
+          e.target.setVolume(parseInt(document.getElementById('listener-vol').value*100)||80);
+          document.getElementById('yt-listener-status-badge').textContent = '✓ READY';
+          toast('🎬 YouTube video ready — waiting for host to play');
+        }
+      }
+    });
+  } else {
+    ytListenerPlayer.loadVideoById(videoId);
+    document.getElementById('yt-listener-status-badge').textContent = '✓ READY';
+  }
+  // Switch listener strip and eq to active
+  const strip = document.getElementById('listener-art-strip');
+  if (strip) strip.classList.remove('paused');
+}
+
+function ytListenerPlay(msg) {
+  if (!ytListenerPlayer) { toast('⏳ YouTube still loading...'); return; }
+  const waitMs = Math.max(0, msg.playAt - Date.now());
+  ytListenerPlayer.seekTo(msg.position||0, true);
+  clearTimeout(ytListenerPlayer._playTimer);
+  ytListenerPlayer._playTimer = setTimeout(()=>{
+    ytListenerPlayer.playVideo();
+    document.getElementById('yt-listener-status-badge').textContent = '▶ SYNCED';
+    setListenerPlayUI(true);
+    toast('🎵 YouTube playing in sync!');
+  }, waitMs);
+}
+
+function ytListenerPause(msg) {
+  if (ytListenerPlayer) {
+    ytListenerPlayer.pauseVideo();
+    if (msg.position!=null) ytListenerPlayer.seekTo(msg.position, true);
+  }
+  document.getElementById('yt-listener-status-badge').textContent = '⏸ PAUSED';
+  setListenerPlayUI(false);
+}
+
+function ytListenerSeek(msg) {
+  if (!ytListenerPlayer) return;
+  const transit = msg.sentAt ? (performance.now()-msg.sentAt)/1000 : 0;
+  ytListenerPlayer.seekTo((msg.position||0)+transit, true);
+}
+
+function ytListenerSetVol(v) {
+  if (ytListenerPlayer) ytListenerPlayer.setVolume(Math.round(v*100));
+}
+
 // ── INIT ──
 buildEQ('host-eq');
+buildEQ('listener-eq-full', 16);
 </script>
 </body>
 </html>
