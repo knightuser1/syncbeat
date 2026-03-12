@@ -2047,11 +2047,14 @@ function clearQueue() {
   queue = []; currentTrack = -1;
   hostAudioEl.pause(); hostAudioEl.src='';
   isPlaying = false;
+  setHostPlayUI(false);
   document.getElementById('upload-zone').style.display='block';
   document.getElementById('host-track-display').style.display='none';
   document.getElementById('host-controls').style.display='none';
   document.getElementById('mini-player').style.display='none';
   renderHostQueue();
+  // Tell listeners to stop and reset their player
+  broadcast({ type:'stop-audio' });
   broadcast({ type:'queue-update', queue: [] });
 }
 
@@ -2821,9 +2824,47 @@ function scheduleReconnect() {
 // ── Handle host messages ──
 function onHostMsg(msg) {
   // Source switch
+  // Stop all audio immediately (host cleared queue or switched source)
+  if (msg.type==='stop-audio') {
+    if (listenerAudio) { listenerAudio.pause(); listenerAudio.src=''; }
+    if (ytListenerPlayer && typeof ytListenerPlayer.pauseVideo==='function') {
+      ytListenerPlayer.pauseVideo();
+    }
+    // Reset listener UI
+    document.getElementById('listener-song-title').textContent = 'Waiting for host...';
+    document.getElementById('listener-song-artist').textContent = 'Stand by';
+    document.getElementById('listener-eq-full').classList.add('paused');
+    document.getElementById('listener-art-strip').classList.add('paused');
+    document.getElementById('listener-progress').style.width = '0%';
+    document.getElementById('listener-disc').textContent = '🎵';
+    return;
+  }
+
   if (msg.type==='source-switch') {
     const isYt = msg.source==='youtube';
     document.getElementById('yt-listener-card').classList.toggle('visible', isYt);
+    if (isYt) {
+      // Switched to YouTube — stop file audio immediately
+      if (listenerAudio) {
+        listenerAudio.pause();
+        listenerAudio.src = '';
+      }
+      // Reset upload UI on listener side
+      document.getElementById('listener-song-title').textContent = 'Waiting for host...';
+      document.getElementById('listener-song-artist').textContent = 'Stand by';
+      document.getElementById('listener-eq-full').classList.add('paused');
+      document.getElementById('listener-art-strip').classList.add('paused');
+      document.getElementById('listener-progress').style.width = '0%';
+    } else {
+      // Switched back to upload — stop YouTube player
+      if (ytListenerPlayer && typeof ytListenerPlayer.pauseVideo === 'function') {
+        ytListenerPlayer.pauseVideo();
+      }
+      document.getElementById('yt-listener-card').classList.remove('visible');
+      // Reset YT listener UI
+      document.getElementById('yt-listener-title').textContent = 'Waiting for host...';
+      document.getElementById('yt-listener-status').textContent = 'Stand by';
+    }
   }
   // YouTube load
   if (msg.type==='yt-load') {
@@ -3419,15 +3460,24 @@ function switchSource(src) {
   document.getElementById('src-tab-youtube').classList.toggle('active', src==='youtube');
   document.getElementById('upload-compartment').classList.toggle('active', src==='upload');
   document.getElementById('yt-compartment').classList.toggle('active', src==='youtube');
-  // Pause whichever player is no longer active
-  if (src==='upload' && ytHostPlayer && ytIsPlaying) {
-    ytHostPlayer.pauseVideo();
-    ytIsPlaying=false;
+
+  if (src==='upload') {
+    // Stop YouTube on host
+    if (ytHostPlayer && ytIsPlaying) { ytHostPlayer.pauseVideo(); ytIsPlaying=false; }
+    // Stop YouTube on all listeners BEFORE sending source-switch
+    broadcast({ type:'stop-audio' });
   }
-  if (src==='youtube' && isPlaying) {
-    hostAudioEl.pause(); isPlaying=false; setHostPlayUI(false);
+  if (src==='youtube') {
+    // Stop file audio on host
+    if (isPlaying) { hostAudioEl.pause(); isPlaying=false; setHostPlayUI(false); }
+    // Stop file audio on all listeners BEFORE sending source-switch
+    broadcast({ type:'stop-audio' });
   }
-  broadcast({ type:'source-switch', source:src });
+
+  // Small delay so listeners stop before new content starts
+  setTimeout(() => {
+    broadcast({ type:'source-switch', source:src });
+  }, 150);
 }
 
 // ── URL parsing ──
