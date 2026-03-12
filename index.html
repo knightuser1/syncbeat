@@ -4,6 +4,36 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>SyncBeat — Listen Together</title>
+
+<!-- ── PWA Meta ── -->
+<meta name="application-name" content="SyncBeat">
+<meta name="description" content="Listen to music together in perfect sync — anywhere in the world.">
+<meta name="theme-color" content="#0c0c10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SyncBeat">
+<meta name="msapplication-TileColor" content="#0c0c10">
+
+<!-- Open Graph (for sharing links) -->
+<meta property="og:title" content="SyncBeat — Listen Together">
+<meta property="og:description" content="Sync music with friends anywhere in the world. Real-time. No lag.">
+<meta property="og:url" content="https://music.himanshushankar.in">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://music.himanshushankar.in/icon-512.png">
+
+<!-- Twitter card -->
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="SyncBeat — Listen Together">
+<meta name="twitter:description" content="Sync music with friends anywhere in the world.">
+
+<!-- PWA Icons (inline SVG as data URIs — no extra files needed) -->
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230c0c10'/><text y='.9em' font-size='72' x='50%' text-anchor='middle' dominant-baseline='middle' dy='0.05em'>🎵</text></svg>">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%230c0c10'/><text y='.9em' font-size='72' x='50%' text-anchor='middle' dominant-baseline='middle' dy='0.05em'>🎵</text></svg>">
+
+<!-- Inline PWA Manifest -->
+<link rel="manifest" href="/manifest.json">
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -3468,6 +3498,107 @@ function ytListenerSetVol(v) {
 // ── INIT ──
 buildEQ('host-eq');
 buildEQ('listener-eq-full', 16);
+
+// ══════════════════════════════════════════
+//  PWA — SERVICE WORKER + INSTALL PROMPT
+// ══════════════════════════════════════════
+
+// ── Service Worker Registration ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('✅ SyncBeat SW registered, scope:', reg.scope))
+      .catch(e => console.warn('SW registration failed:', e.message));
+  });
+}
+
+// ── Install prompt banner ──
+let deferredInstallPrompt = null;
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  showInstallBanner();
+});
+
+function showInstallBanner() {
+  if (document.getElementById('pwa-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'pwa-banner';
+  banner.innerHTML = `
+    <div style="
+      position:fixed;bottom:0;left:0;right:0;z-index:9999;
+      background:linear-gradient(135deg,#1a1028,#0e1020);
+      border-top:1px solid rgba(139,92,246,0.3);
+      padding:16px 20px 24px;
+      display:flex;align-items:center;gap:14px;
+      box-shadow:0 -8px 40px rgba(0,0,0,0.6);
+      animation:slideUp 0.4s cubic-bezier(.4,0,.2,1);
+    ">
+      <div style="width:48px;height:48px;border-radius:12px;background:#0c0c10;
+                  display:flex;align-items:center;justify-content:center;font-size:1.6rem;
+                  box-shadow:0 0 20px rgba(139,92,246,0.4);flex-shrink:0">🎵</div>
+      <div style="flex:1">
+        <div style="font-weight:800;font-size:0.9rem;color:#f0f0f8">Install SyncBeat</div>
+        <div style="font-size:0.7rem;color:#9898b8;margin-top:2px">Add to home screen — works like an app</div>
+      </div>
+      <button onclick="triggerInstall()" style="
+        padding:10px 18px;border-radius:99px;border:none;cursor:pointer;
+        background:linear-gradient(135deg,#8b5cf6,#ff4d72);
+        color:#fff;font-weight:800;font-size:0.78rem;font-family:'Syne',sans-serif;
+        box-shadow:0 4px 16px rgba(139,92,246,0.4);
+        white-space:nowrap;
+      ">Install</button>
+      <button onclick="dismissInstallBanner()" style="
+        width:28px;height:28px;border-radius:50%;border:1px solid #333;
+        background:transparent;color:#666;cursor:pointer;font-size:0.8rem;
+        display:flex;align-items:center;justify-content:center;flex-shrink:0;
+      ">✕</button>
+    </div>
+  `;
+  document.body.appendChild(banner);
+}
+
+function triggerInstall() {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  deferredInstallPrompt.userChoice.then(r => {
+    if (r.outcome === 'accepted') {
+      dismissInstallBanner();
+      toast('🎉 SyncBeat installed! Find it on your home screen.');
+    }
+    deferredInstallPrompt = null;
+  });
+}
+
+function dismissInstallBanner() {
+  const b = document.getElementById('pwa-banner');
+  if (b) b.remove();
+  // Don't show again for 3 days
+  localStorage.setItem('pwa_dismissed', Date.now());
+}
+
+// Don't show if recently dismissed
+window.addEventListener('load', () => {
+  const d = localStorage.getItem('pwa_dismissed');
+  if (d && Date.now() - parseInt(d) < 3*24*60*60*1000) {
+    window.removeEventListener('beforeinstallprompt', showInstallBanner);
+  }
+});
+
+// iOS Safari — show manual instructions (no beforeinstallprompt on iOS)
+window.addEventListener('load', () => {
+  const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isInStandalone = window.navigator.standalone;
+  const dismissed = localStorage.getItem('ios_pwa_dismissed');
+  if (isIos && !isInStandalone && !dismissed) {
+    setTimeout(() => {
+      if (document.getElementById('pwa-banner')) return;
+      toast('📲 iOS: Tap Share → "Add to Home Screen" to install SyncBeat!', 6000);
+      localStorage.setItem('ios_pwa_dismissed', '1');
+    }, 4000);
+  }
+});
 </script>
 </body>
 </html>
