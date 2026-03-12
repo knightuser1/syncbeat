@@ -807,6 +807,7 @@ input[type=range]::-webkit-slider-thumb {
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('host')">🎛 Host</button>
     <button class="tab-btn" onclick="switchTab('join')">📡 Join</button>
+    <button class="tab-btn" onclick="switchTab('analytics')">📊 Stats</button>
     <button class="tab-btn" onclick="switchTab('guide')">💡 Guide</button>
   </div>
 
@@ -1119,6 +1120,42 @@ input[type=range]::-webkit-slider-thumb {
   </div>
 
   <!-- ══════════════════════════════
+       ANALYTICS PANEL
+  ══════════════════════════════ -->
+  <div id="panel-analytics" class="panel">
+    <div class="card">
+      <div class="card-label">📊 Site Traffic</div>
+      <div class="stat-row" id="an-traffic-row">
+        <div class="stat-item"><div class="stat-val" id="an-total-visits">—</div><div class="stat-lbl">Total Visits</div></div>
+        <div class="stat-item"><div class="stat-val" id="an-unique">—</div><div class="stat-lbl">Unique Visitors</div></div>
+        <div class="stat-item"><div class="stat-val" id="an-today">—</div><div class="stat-lbl">Today</div></div>
+        <div class="stat-item"><div class="stat-val" id="an-sessions">—</div><div class="stat-lbl">Sessions</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">🎵 Room Activity</div>
+      <div class="stat-row">
+        <div class="stat-item"><div class="stat-val" id="an-rooms">—</div><div class="stat-lbl">Rooms Created</div></div>
+        <div class="stat-item"><div class="stat-val" id="an-joins">—</div><div class="stat-lbl">Room Joins</div></div>
+        <div class="stat-item"><div class="stat-val" id="an-songs">—</div><div class="stat-lbl">Songs Played</div></div>
+        <div class="stat-item"><div class="stat-val" id="an-chats">—</div><div class="stat-lbl">Chat Messages</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">📅 Daily Visits — Last 14 Days</div>
+      <div id="an-chart" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <div class="card-label">🌍 Recent Sessions</div>
+      <div id="an-sessions-list" style="display:flex;flex-direction:column;gap:6px;margin-top:4px;max-height:260px;overflow-y:auto"></div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:4px">
+      <button class="btn btn-ghost btn-sm" onclick="exportAnalytics()">📥 Export CSV</button>
+      <button class="btn btn-rose btn-sm" onclick="resetAnalytics()">🗑 Reset Data</button>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════
        GUIDE PANEL
   ══════════════════════════════ -->
   <div id="panel-guide" class="panel">
@@ -1247,10 +1284,11 @@ function fmt(s) {
   return `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 }
 function switchTab(t) {
-  ['host','join','guide'].forEach((x,i) => {
+  ['host','join','analytics','guide'].forEach((x,i) => {
     document.querySelectorAll('.tab-btn')[i].classList.toggle('active', x===t);
     document.getElementById('panel-'+x).classList.toggle('active', x===t);
   });
+  if (t==='analytics') renderAnalytics();
 }
 function genCode() {
   const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -1859,55 +1897,76 @@ function executeTransfer(targetPeerId) {
   const target = activeConns[targetPeerId];
   if (!target) { toast('❌ Listener not found'); return; }
 
-  // Build full state snapshot to hand off
+  const newHostName  = target.name;
+  const savedCode    = roomCode_;
+  const savedPass    = roomPassword_;
+  const savedName    = hostName_;
+  const savedPos     = hostAudioEl.currentTime;
+  const savedPlaying = isPlaying;
+
+  // Snapshot queue files before destroying anything
+  const savedQueue   = queue.slice();
+  const savedTrack   = currentTrack;
+  const savedLoop    = loopMode;
+  const savedShuffle = shuffleMode;
+
+  // Build state for new host
   const state = {
     type: 'you-are-host',
-    roomCode: roomCode_,
-    hostName: hostName_,
-    roomPassword: roomPassword_,
+    roomCode: savedCode,
+    hostName: newHostName,       // new host keeps their own name
+    prevHostName: savedName,     // old host's name for them to rejoin with
+    roomPassword: savedPass,
     queue: queueMeta(),
-    currentTrack,
-    isPlaying,
-    position: hostAudioEl.currentTime,
-    loopMode,
-    shuffleMode,
+    currentTrack: savedTrack,
+    isPlaying: false,            // new host starts paused — they press play when ready
+    position: savedPos,
+    loopMode: savedLoop,
+    shuffleMode: savedShuffle,
   };
 
-  // Tell the target they're now host
+  // Tell target they're now host
   try { target.conn.send(state); } catch(e) { toast('❌ Transfer failed'); return; }
 
-  // Tell everyone else that host changed
-  const newHostName = target.name;
-  broadcastExcept({ type:'host-changed', newHostName }, targetPeerId);
-
-  // Announce in chat
-  addChatMessage('host', null, `👑 ${newHostName} is now the host!`, true);
+  // Announce to everyone
   broadcast({ type:'chat', name:'System', text:`👑 ${newHostName} is now the host!` });
+  broadcastExcept({ type:'host-changed', newHostName }, targetPeerId);
+  addChatMessage('host', null, `👑 ${newHostName} is now the host! You're now a listener.`, true);
+  toast(`👑 Transferred to ${newHostName}! Rejoining as listener...`);
 
-  toast(`👑 Host transferred to ${newHostName}!`);
+  // Pause audio silently
+  hostAudioEl.pause();
+  isPlaying = false;
 
-  // Step down — pause host audio, destroy peer, show listener UI
+  // Destroy host peer — the new host will register the same peer ID
+  // We give them 800ms head start to register before we try to connect back
+  const peerToDestroy = myPeer;
+  myPeer = null;
+  activeConns = {};
+
   setTimeout(() => {
-    hostAudioEl.pause();
-    if (myPeer) { myPeer.destroy(); myPeer = null; }
-    // Reset host state
-    activeConns  = {};
-    isPlaying    = false;
-    queue        = [];
-    currentTrack = -1;
-    // Hide host UI, show a "you stepped down" message on the join panel
-    document.getElementById('host-room-ui').style.display   = 'none';
-    document.getElementById('host-setup-card').style.display = 'block';
-    document.getElementById('host-setup-card').querySelector('button').disabled = false;
-    document.getElementById('host-conn-steps').style.display = 'none';
-    document.getElementById('mini-player').style.display = 'none';
+    if (peerToDestroy) peerToDestroy.destroy();
+  }, 200);
+
+  // Reset host UI silently
+  document.getElementById('host-room-ui').style.display    = 'none';
+  document.getElementById('host-setup-card').style.display = 'block';
+  document.getElementById('host-setup-card').querySelector('button').disabled = false;
+  document.getElementById('host-conn-steps').style.display = 'none';
+
+  // After new host has time to register, auto-join as listener seamlessly
+  setTimeout(async () => {
     switchTab('join');
-    // Pre-fill join form so previous host can re-join as listener
-    document.getElementById('join-name-input').value  = hostName_ + ' (prev host)';
-    document.getElementById('join-code-input').value  = roomCode_;
-    document.getElementById('join-password').value    = roomPassword_;
-    toast(`You stepped down. Join as listener to stay in the room.`, 5000);
-  }, 500);
+    // Prefill join form
+    document.getElementById('join-name-input').value = savedName;
+    document.getElementById('join-code-input').value = savedCode;
+    document.getElementById('join-password').value   = savedPass;
+    // Auto-join
+    lastJoinName = savedName;
+    lastJoinCode = savedCode;
+    lastJoinPass = savedPass;
+    await joinRoomAuto(savedCode, savedName, savedPass);
+  }, 1200);
 }
 
 // ── Copy/Share ──
@@ -2081,6 +2140,29 @@ function listenerReact(emoji) {
 // ══════════════════════════════════════════
 //  JOIN / LISTENER
 // ══════════════════════════════════════════
+// Silent auto-join used after host transfer (no UI manipulation)
+async function joinRoomAuto(code, name, pass) {
+  try {
+    const { peer } = await initPeer('listener-' + genShort());
+    myPeer = peer;
+    const conn = peer.connect('syncbeat-' + code, {
+      metadata: { name, password: pass }, reliable: true, serialization: 'binary'
+    });
+    conn.on('open', () => {
+      listenerConn = conn;
+      conn.on('data', onHostMsg);
+      conn.on('close', () => { setListenerBadge('warn','Disconnected'); scheduleReconnect(); });
+      document.getElementById('join-form-card').style.display    = 'none';
+      document.getElementById('listener-room-ui').style.display  = 'block';
+      document.getElementById('listener-room-badge').textContent = code;
+      toast('✅ Back in the room as listener!');
+    });
+    conn.on('error', () => toast('⚠️ Could not rejoin — try manually'));
+  } catch(e) {
+    toast('⚠️ Auto-rejoin failed — enter the room code manually');
+  }
+}
+
 async function joinRoom() {
   const name = document.getElementById('join-name-input').value.trim();
   const code = document.getElementById('join-code-input').value.trim().toUpperCase();
@@ -2374,70 +2456,72 @@ function voteTrack(index, e) {
 //  BECOME HOST (transfer received)
 // ══════════════════════════════════════════
 async function handleBecomeHost(state) {
-  toast('👑 You are now the host! Taking control...', 5000);
+  toast('👑 You are now the host! Taking control...', 4000);
 
-  // Show crown badge on listener UI briefly
   const crown = document.getElementById('listener-crown');
-  if (crown) crown.style.display = 'inline-flex';
+  if (crown) { crown.style.display='inline-flex'; setTimeout(()=>crown.style.display='none', 4000); }
 
-  // Destroy old listener peer connection
-  if (listenerConn) { listenerConn.close(); listenerConn = null; }
-  if (myPeer) { myPeer.destroy(); myPeer = null; }
-  if (listenerAudio) { listenerAudio.pause(); }
+  // Close listener connection cleanly
+  if (listenerConn) { try{listenerConn.close();}catch(e){} listenerConn = null; }
+  if (myPeer)       { try{myPeer.destroy();}    catch(e){} myPeer = null; }
+  if (listenerAudio){ listenerAudio.pause(); listenerAudio = null; }
 
-  // Restore host state from received snapshot
-  hostName_      = state.hostName;
-  roomCode_      = state.roomCode;
-  roomPassword_  = state.roomPassword || '';
-  loopMode       = state.loopMode || false;
-  shuffleMode    = state.shuffleMode || false;
-  activeConns    = {};
-  queue          = [];
-  currentTrack   = -1;
-  isPlaying      = false;
+  // Restore state
+  hostName_     = state.prevHostName || state.hostName; // keep new host's own name
+  roomCode_     = state.roomCode;
+  roomPassword_ = state.roomPassword || '';
+  loopMode      = state.loopMode || false;
+  shuffleMode   = state.shuffleMode || false;
+  activeConns   = {};
+  queue         = [];
+  currentTrack  = -1;
+  isPlaying     = false;
 
-  // Switch to host tab and show room UI
+  // Restore queue display-only entries (audio needs re-upload)
+  if (state.queue?.length) {
+    state.queue.forEach(t => queue.push({
+      file:null, title:t.title, artist:t.artist||'', album:t.album||'', artUrl:null, votes:t.votes||0
+    }));
+    currentTrack = state.currentTrack ?? 0;
+    const t = queue[currentTrack];
+    if (t) {
+      document.getElementById('host-track-title').textContent  = t.title;
+      document.getElementById('host-track-artist').textContent = t.artist||'Unknown Artist';
+      document.getElementById('host-track-display').style.display = 'flex';
+      document.getElementById('host-controls').style.display       = 'block';
+      document.getElementById('upload-zone').style.display         = 'none';
+    }
+    renderHostQueue();
+  }
+
+  // Switch UI
   switchTab('host');
   document.getElementById('host-setup-card').style.display  = 'none';
   document.getElementById('host-room-ui').style.display     = 'block';
   document.getElementById('host-code-display').textContent  = roomCode_;
   document.getElementById('listener-room-ui').style.display = 'none';
+  buildEQ('host-eq');
+  document.getElementById('stat-queue').textContent      = queue.length;
+  document.getElementById('stat-listeners').textContent  = '0';
+  document.getElementById('listeners-badge').className   = 'badge badge-idle';
+  document.getElementById('listeners-badge').innerHTML   = 'Waiting';
 
-  // Restore queue metadata (no audio files — new host must re-upload)
-  // But show the queue names so they know what was playing
-  if (state.queue?.length) {
-    // Populate display-only queue entries
-    state.queue.forEach(t => {
-      queue.push({ file:null, title:t.title, artist:t.artist||'', album:t.album||'', artUrl:null });
-    });
-    currentTrack = state.currentTrack ?? 0;
-    // Show track info in player
-    document.getElementById('upload-zone').style.display       = 'none';
-    document.getElementById('host-track-display').style.display = 'flex';
-    document.getElementById('host-track-title').textContent    = queue[currentTrack]?.title || '—';
-    document.getElementById('host-track-artist').textContent   = queue[currentTrack]?.artist || 'Unknown Artist';
-    document.getElementById('host-controls').style.display     = 'block';
-    renderHostQueue();
-    // Notify they need to re-upload
-    setTimeout(() => toast('⚠️ Re-upload the songs to continue playback — queue names are restored', 6000), 1500);
-  }
-
-  // Re-init peer with same room code so listeners reconnect automatically
-  try {
-    const { peer } = await initPeer('syncbeat-' + roomCode_);
-    myPeer = peer;
-    peer.on('connection', onListenerConn);
-    buildEQ('host-eq');
-    // Update stat badges
-    document.getElementById('stat-listeners').textContent = '0';
-    document.getElementById('stat-queue').textContent = queue.length;
-    const badge = document.getElementById('listeners-badge');
-    badge.className = 'badge badge-idle';
-    badge.innerHTML = 'Waiting';
-    toast(`✅ You're live as host on room ${roomCode_}! Listeners will reconnect shortly.`, 6000);
-  } catch(e) {
-    toast('❌ Could not claim host peer. Room may need a new code.');
-  }
+  // Register as host peer — wait a bit for old host peer to fully close
+  setTimeout(async () => {
+    try {
+      const { peer } = await initPeer('syncbeat-' + roomCode_);
+      myPeer = peer;
+      peer.on('connection', onListenerConn);
+      updateSyncStatus();
+      toast(`✅ Room ${roomCode_} is yours! Others are reconnecting...`, 5000);
+      // Show re-upload notice only if there was a queue
+      if (queue.length) {
+        setTimeout(()=>toast('⚠️ Re-upload songs to resume playback — queue names saved', 6000), 2000);
+      }
+    } catch(e) {
+      toast('❌ Could not register as host peer. Try creating a new room.');
+    }
+  }, 800);
 }
 
 function leaveRoom() {
@@ -2485,8 +2569,204 @@ if(autoJoin){
 }
 
 // ══════════════════════════════════════════
-//  INIT
+//  ANALYTICS ENGINE
+//  Self-contained, localStorage-based
+//  Tracks: visits, uniques, sessions, rooms,
+//  joins, songs, chats, daily counts
 // ══════════════════════════════════════════
+const AN_KEY = 'syncbeat_analytics';
+const AN_VID = 'syncbeat_vid';
+const AN_SID = 'syncbeat_sid';
+
+function anLoad() {
+  try { return JSON.parse(localStorage.getItem(AN_KEY)) || anDefault(); }
+  catch(e) { return anDefault(); }
+}
+function anSave(d) {
+  try { localStorage.setItem(AN_KEY, JSON.stringify(d)); } catch(e){}
+}
+function anDefault() {
+  return {
+    totalVisits:0, uniqueVisitors:0, sessions:0,
+    roomsCreated:0, roomJoins:0, songsPlayed:0, chatMessages:0,
+    daily:{},       // { 'YYYY-MM-DD': count }
+    recentSessions: [] // last 50
+  };
+}
+
+function anGetOrCreateVisitorId() {
+  let vid = localStorage.getItem(AN_VID);
+  if (!vid) { vid = 'v_'+Date.now()+'_'+Math.random().toString(36).slice(2,8); localStorage.setItem(AN_VID,vid); }
+  return vid;
+}
+
+function anIsNewSession() {
+  const lastSid = sessionStorage.getItem(AN_SID);
+  if (lastSid) return false;
+  sessionStorage.setItem(AN_SID, '1');
+  return true;
+}
+
+function anTodayKey() {
+  return new Date().toISOString().slice(0,10);
+}
+
+function anTrack(event, detail='') {
+  const d = anLoad();
+  const today = anTodayKey();
+  if (event==='visit') {
+    d.totalVisits++;
+    d.daily[today] = (d.daily[today]||0) + 1;
+    // Session check
+    if (anIsNewSession()) {
+      d.sessions++;
+      const vid = anGetOrCreateVisitorId();
+      // Check if truly new unique visitor by storing known vids list
+      const knownVids = JSON.parse(localStorage.getItem('syncbeat_vids')||'[]');
+      if (!knownVids.includes(vid)) {
+        knownVids.push(vid);
+        localStorage.setItem('syncbeat_vids', JSON.stringify(knownVids.slice(-1000)));
+        d.uniqueVisitors++;
+      }
+      // Log session
+      d.recentSessions.unshift({
+        time: new Date().toLocaleString(),
+        vid: vid.slice(-6),
+        ua: navigator.userAgent.slice(0,60),
+        ref: document.referrer || 'Direct'
+      });
+      d.recentSessions = d.recentSessions.slice(0,50);
+    }
+  }
+  if (event==='room_created') d.roomsCreated++;
+  if (event==='room_joined')  d.roomJoins++;
+  if (event==='song_played')  d.songsPlayed++;
+  if (event==='chat_sent')    d.chatMessages++;
+  anSave(d);
+}
+
+function renderAnalytics() {
+  const d = anLoad();
+  document.getElementById('an-total-visits').textContent = d.totalVisits;
+  document.getElementById('an-unique').textContent       = d.uniqueVisitors;
+  document.getElementById('an-sessions').textContent     = d.sessions;
+  document.getElementById('an-rooms').textContent        = d.roomsCreated;
+  document.getElementById('an-joins').textContent        = d.roomJoins;
+  document.getElementById('an-songs').textContent        = d.songsPlayed;
+  document.getElementById('an-chats').textContent        = d.chatMessages;
+
+  // Today count
+  document.getElementById('an-today').textContent = d.daily[anTodayKey()]||0;
+
+  // Bar chart — last 14 days
+  const chart = document.getElementById('an-chart');
+  const days = [];
+  for(let i=13;i>=0;i--) {
+    const dt = new Date(); dt.setDate(dt.getDate()-i);
+    days.push(dt.toISOString().slice(0,10));
+  }
+  const maxVal = Math.max(1, ...days.map(k=>d.daily[k]||0));
+  chart.innerHTML = `
+    <div style="display:flex;align-items:flex-end;gap:4px;height:90px;padding:0 2px">
+      ${days.map(k=>{
+        const val = d.daily[k]||0;
+        const pct = Math.max(4, Math.round(val/maxVal*100));
+        const label = k.slice(5); // MM-DD
+        const isToday = k===anTodayKey();
+        return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;height:100%;justify-content:flex-end">
+          <div style="font-size:0.5rem;color:var(--text3)">${val||''}</div>
+          <div style="width:100%;height:${pct}%;border-radius:4px 4px 0 0;
+            background:${isToday?'linear-gradient(to top,var(--gold),var(--rose))':'var(--border2)'};
+            min-height:4px;transition:height 0.4s ease"></div>
+          <div style="font-size:0.45rem;color:var(--text3);white-space:nowrap">${label}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="text-align:right;font-size:0.55rem;color:var(--text3);margin-top:6px">Gold bar = today</div>
+  `;
+
+  // Recent sessions list
+  const sl = document.getElementById('an-sessions-list');
+  if (!d.recentSessions.length) {
+    sl.innerHTML='<div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:12px">No sessions recorded yet</div>';
+  } else {
+    sl.innerHTML = d.recentSessions.map(s=>`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:10px 13px;font-size:0.7rem">
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+          <span style="font-weight:700;color:var(--text)">Visitor ···${s.vid}</span>
+          <span style="color:var(--text3)">${s.time}</span>
+        </div>
+        <div style="color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.ua}</div>
+        <div style="color:var(--text3);margin-top:2px;font-size:0.6rem">From: ${s.ref.slice(0,50)}</div>
+      </div>
+    `).join('');
+  }
+}
+
+function exportAnalytics() {
+  const d = anLoad();
+  const rows = [
+    ['Metric','Value'],
+    ['Total Visits', d.totalVisits],
+    ['Unique Visitors', d.uniqueVisitors],
+    ['Sessions', d.sessions],
+    ['Rooms Created', d.roomsCreated],
+    ['Room Joins', d.roomJoins],
+    ['Songs Played', d.songsPlayed],
+    ['Chat Messages', d.chatMessages],
+    [],
+    ['Date','Visits'],
+    ...Object.entries(d.daily).sort().map(([k,v])=>[k,v])
+  ];
+  const csv = rows.map(r=>r.join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'syncbeat-analytics.csv';
+  a.click();
+  toast('📥 Analytics exported!');
+}
+
+function resetAnalytics() {
+  if (!confirm('Reset all analytics data? This cannot be undone.')) return;
+  localStorage.removeItem(AN_KEY);
+  localStorage.removeItem('syncbeat_vids');
+  renderAnalytics();
+  toast('🗑 Analytics reset');
+}
+
+// ── Wire analytics into existing actions ──
+// Track visit on load
+anTrack('visit');
+
+// Patch hostCreate to track room creation
+const _origHostCreate = hostCreate;
+window.hostCreate = async function() {
+  await _origHostCreate();
+  anTrack('room_created');
+};
+
+// Patch joinRoom to track joins
+const _origJoinRoom = joinRoom;
+window.joinRoom = async function() {
+  await _origJoinRoom();
+  anTrack('room_joined');
+};
+
+// Patch loadTrack to track songs played
+const _origLoadTrack = loadTrack;
+window.loadTrack = function(i) {
+  _origLoadTrack(i);
+  anTrack('song_played');
+};
+
+// Patch sendChat to track messages
+const _origSendChat = sendChat;
+window.sendChat = function(side) {
+  _origSendChat(side);
+  anTrack('chat_sent');
+};
+
+// ── INIT ──
 buildEQ('host-eq');
 </script>
 </body>
