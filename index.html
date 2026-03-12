@@ -400,8 +400,64 @@ input[type=range]::-webkit-slider-thumb {
 }
 
 /* ═══════════════════════════════════════════
-   SOURCE SWITCHER & YOUTUBE
+   SONG REQUESTS
 ═══════════════════════════════════════════ */
+.suggest-tabs {
+  display:flex; background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:3px; gap:3px; margin-bottom:14px;
+}
+.suggest-tab {
+  flex:1; padding:8px 6px; border:none; border-radius:7px;
+  font-family:'Syne',sans-serif; font-size:0.72rem; font-weight:700;
+  color:var(--text2); background:transparent; cursor:pointer;
+  transition:all var(--transition);
+}
+.suggest-tab.active {
+  background:linear-gradient(135deg,var(--violet),var(--rose));
+  color:#fff; box-shadow:0 3px 10px rgba(139,92,246,0.3);
+}
+
+.request-item {
+  display:flex; align-items:center; gap:10px;
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:12px; padding:11px 13px;
+  animation:msgIn 0.2s ease;
+  transition:border-color var(--transition);
+}
+.request-item:hover { border-color:var(--violet); }
+.request-icon {
+  width:38px; height:38px; border-radius:9px; flex-shrink:0;
+  background:linear-gradient(135deg,rgba(139,92,246,0.2),rgba(255,77,114,0.15));
+  border:1px solid rgba(139,92,246,0.25);
+  display:flex; align-items:center; justify-content:center; font-size:1.1rem;
+}
+.request-info { flex:1; overflow:hidden; }
+.request-title { font-size:0.82rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.request-meta  { font-size:0.62rem; color:var(--text3); margin-top:2px; }
+.request-meta span { color:var(--violet); font-weight:700; }
+.request-actions { display:flex; gap:6px; flex-shrink:0; }
+.req-accept {
+  width:32px; height:32px; border-radius:50%; border:none; cursor:pointer;
+  background:linear-gradient(135deg,var(--green),#16a34a);
+  color:#fff; font-size:0.9rem; display:flex; align-items:center; justify-content:center;
+  transition:all var(--transition); box-shadow:0 2px 8px rgba(34,197,94,0.3);
+}
+.req-accept:hover { transform:scale(1.1); }
+.req-reject {
+  width:32px; height:32px; border-radius:50%; border:none; cursor:pointer;
+  background:var(--surface); border:1px solid var(--border);
+  color:var(--text2); font-size:0.85rem; display:flex; align-items:center; justify-content:center;
+  transition:all var(--transition);
+}
+.req-reject:hover { background:var(--rose); color:#fff; border-color:var(--rose); }
+
+/* Request badge on host queue header */
+.req-badge {
+  background:var(--rose); color:#fff; border-radius:99px;
+  font-size:0.55rem; font-weight:800; padding:2px 7px;
+  display:none; animation:msgIn 0.2s ease;
+}
+.req-badge.visible { display:inline-flex; }
 .source-tabs {
   display:flex; background:var(--surface); border:1px solid var(--border);
   border-radius:10px; padding:3px; gap:3px; margin-bottom:16px;
@@ -1289,7 +1345,8 @@ input[type=range]::-webkit-slider-thumb {
       <div class="card">
         <div class="section-header">
           <div class="card-label" style="margin-bottom:0">📋 Queue</div>
-          <div style="display:flex;gap:6px">
+          <div style="display:flex;gap:6px;align-items:center">
+            <span class="req-badge" id="req-badge">0 new</span>
             <label class="btn btn-ghost btn-xs" style="cursor:pointer">
               + Add Songs
               <input type="file" accept="audio/*" multiple onchange="filesAdded(this)" style="display:none">
@@ -1299,6 +1356,16 @@ input[type=range]::-webkit-slider-thumb {
         </div>
         <div class="queue-list" id="host-queue-list">
           <div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:16px">Queue is empty — upload songs above</div>
+        </div>
+      </div>
+
+      <!-- Song Requests from listeners -->
+      <div class="card" id="host-requests-card" style="display:none">
+        <div class="section-header">
+          <div class="card-label" style="margin-bottom:0">🎵 Song Requests</div>
+          <span class="badge badge-live" id="host-req-count-badge"><span class="dot pulse"></span> <span id="host-req-count">0</span> pending</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px" id="host-requests-list">
         </div>
       </div>
 
@@ -1454,6 +1521,60 @@ input[type=range]::-webkit-slider-thumb {
         <div class="queue-list" id="listener-queue-list">
           <div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:12px">Waiting for host's queue...</div>
         </div>
+      </div>
+
+      <!-- Suggest a Song -->
+      <div class="card">
+        <div class="card-label">🎵 Suggest a Song</div>
+        <p style="font-size:0.72rem;color:var(--text2);margin-bottom:12px;line-height:1.6">
+          Send a song request to the host — they'll add it to the queue if they like it!
+        </p>
+        <!-- Tab switcher -->
+        <div class="suggest-tabs">
+          <button class="suggest-tab active" id="sug-tab-file" onclick="switchSuggestTab('file')">📁 Upload File</button>
+          <button class="suggest-tab" id="sug-tab-yt" onclick="switchSuggestTab('yt')">▶️ YouTube Link</button>
+        </div>
+        <!-- File upload suggestion -->
+        <div id="sug-file-section">
+          <div style="position:relative;margin-bottom:10px">
+            <label style="
+              display:flex;align-items:center;gap:10px;
+              background:var(--surface);border:1.5px dashed var(--border);
+              border-radius:12px;padding:14px 16px;cursor:pointer;
+              transition:border-color var(--transition);
+            " id="sug-file-label">
+              <span style="font-size:1.4rem">🎵</span>
+              <div>
+                <div style="font-size:0.82rem;font-weight:700" id="sug-file-name">Choose audio file...</div>
+                <div style="font-size:0.62rem;color:var(--text3);margin-top:2px">MP3 · WAV · OGG · M4A</div>
+              </div>
+              <input type="file" id="sug-file-input" accept="audio/*" style="display:none" onchange="sugFileChosen(this)">
+            </label>
+          </div>
+          <button class="btn btn-violet" style="width:100%" onclick="suggestSongFile()">🎵 Send Request</button>
+        </div>
+        <!-- YouTube suggestion -->
+        <div id="sug-yt-section" style="display:none">
+          <div class="yt-paste-row" style="margin-bottom:10px">
+            <input class="yt-paste-input" id="sug-yt-input" placeholder="Paste YouTube link...">
+          </div>
+          <!-- Preview -->
+          <div id="sug-yt-preview" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 12px">
+              <img id="sug-yt-thumb" src="" style="width:56px;height:40px;object-fit:cover;border-radius:6px;flex-shrink:0">
+              <div style="flex:1;overflow:hidden">
+                <div style="font-size:0.78rem;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" id="sug-yt-title">—</div>
+                <div style="font-size:0.6rem;color:var(--text3);margin-top:2px">YouTube</div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost" style="flex:1" onclick="sugYtPreview()">🔍 Preview</button>
+            <button class="btn btn-violet" style="flex:1" onclick="suggestSongYt()">🎵 Send Request</button>
+          </div>
+        </div>
+        <!-- Status message -->
+        <div id="sug-status" style="display:none;margin-top:10px;text-align:center;font-size:0.75rem;color:var(--text2);padding:10px;background:var(--surface);border-radius:10px"></div>
       </div>
 
       <!-- Chat -->
@@ -1818,10 +1939,19 @@ async function filesAdded(input) {
     queue.push({ file, ...meta });
   }
   renderHostQueue();
-  document.getElementById('stat-queue').textContent = queue.length;
   if (currentTrack === -1) loadTrack(0);
   toast(`✅ Added ${files.length} song${files.length>1?'s':''} to queue`);
   input.value='';
+}
+
+// Add a single File object to queue (used when accepting listener requests)
+async function processAudioFile(file, onDone) {
+  const meta = await readID3(file);
+  queue.push({ file, ...meta });
+  renderHostQueue();
+  broadcast({ type:'queue-update', queue:queueMeta() });
+  if (currentTrack === -1) loadTrack(0);
+  if (onDone) onDone();
 }
 
 function loadTrack(index) {
@@ -2128,6 +2258,11 @@ function onListenerConn(conn) {
         broadcast({ type:'vote-update', trackIndex:msg.trackIndex, votes:queue[msg.trackIndex].votes });
       }
     }
+    // Song requests
+    if (msg.type==='song-request-start')  hostHandleSongRequestStart(conn, msg);
+    if (msg.type==='song-request-chunk')  hostHandleSongRequestChunk(msg);
+    if (msg.type==='song-request-end')    hostHandleSongRequestEnd(msg);
+    if (msg.type==='song-request-yt')     hostHandleSongRequestYt(msg);
   });
 
   conn.on('close', () => {
@@ -2706,6 +2841,16 @@ function onHostMsg(msg) {
   // YouTube seek
   if (msg.type==='yt-seek') {
     ytListenerSeek(msg);
+  }
+  // Song request response from host
+  if (msg.type==='request-response') {
+    if (msg.accepted) {
+      showSugStatus(`✅ "${msg.title}" was accepted by the host!`);
+      toast(`✅ Your song "${msg.title}" was added to the queue!`);
+    } else {
+      showSugStatus(`❌ "${msg.title}" was not added this time.`);
+    }
+    return;
   }
   // Auth fail
   if (msg.type==='auth-fail') {
@@ -3503,7 +3648,230 @@ buildEQ('listener-eq-full', 16);
 //  PWA — SERVICE WORKER + INSTALL PROMPT
 // ══════════════════════════════════════════
 
-// ── Service Worker Registration ──
+// ══════════════════════════════════════════
+//  SONG REQUESTS
+// ══════════════════════════════════════════
+let pendingRequests = [];   // host side: [{id, name, suggester, type, data, title}]
+let suggestFileData = null; // listener side: chosen file ArrayBuffer
+let suggestFileName = '';
+
+// ── Listener: tab switcher ──
+function switchSuggestTab(tab) {
+  document.getElementById('sug-tab-file').classList.toggle('active', tab==='file');
+  document.getElementById('sug-tab-yt').classList.toggle('active', tab==='yt');
+  document.getElementById('sug-file-section').style.display = tab==='file' ? 'block' : 'none';
+  document.getElementById('sug-yt-section').style.display   = tab==='yt'   ? 'block' : 'none';
+  document.getElementById('sug-status').style.display = 'none';
+}
+
+// ── Listener: file chosen ──
+function sugFileChosen(input) {
+  const file = input.files[0];
+  if (!file) return;
+  suggestFileName = file.name.replace(/\.[^.]+$/, '');
+  document.getElementById('sug-file-name').textContent = file.name;
+  document.getElementById('sug-file-label').style.borderColor = 'var(--violet)';
+  // Read into ArrayBuffer for sending
+  const reader = new FileReader();
+  reader.onload = e => { suggestFileData = e.target.result; };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── Listener: send file suggestion ──
+function suggestSongFile() {
+  if (!listenerConn) { toast('⚠️ Not connected to a room'); return; }
+  if (!suggestFileData) { toast('⚠️ Choose a file first'); return; }
+  const myName = lastJoinName || 'Listener';
+  const reqId  = 'req_' + Date.now();
+
+  // Send metadata first, then chunks
+  listenerConn.send({
+    type: 'song-request-start',
+    reqId, title: suggestFileName,
+    suggester: myName,
+    fileSize: suggestFileData.byteLength,
+    reqType: 'file'
+  });
+
+  // Send in chunks (same as host→listener pattern)
+  const CHUNK = 32768;
+  let offset = 0;
+  function sendChunk() {
+    if (offset >= suggestFileData.byteLength) {
+      listenerConn.send({ type:'song-request-end', reqId });
+      showSugStatus('⏳ Request sent! Waiting for host to review...');
+      suggestFileData = null;
+      suggestFileName = '';
+      document.getElementById('sug-file-name').textContent = 'Choose audio file...';
+      document.getElementById('sug-file-label').style.borderColor = 'var(--border)';
+      document.getElementById('sug-file-input').value = '';
+      return;
+    }
+    const chunk = suggestFileData.slice(offset, offset + CHUNK);
+    listenerConn.send({ type:'song-request-chunk', reqId, chunk });
+    offset += CHUNK;
+    setTimeout(sendChunk, 10);
+  }
+  sendChunk();
+}
+
+// ── Listener: YouTube suggestion preview ──
+function sugYtPreview() {
+  const url = document.getElementById('sug-yt-input').value.trim();
+  const vid = ytExtractId(url);
+  if (!vid) { toast('⚠️ Invalid YouTube link'); return; }
+  document.getElementById('sug-yt-thumb').src = `https://img.youtube.com/vi/${vid}/hqdefault.jpg`;
+  // Fetch title
+  fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${vid}&format=json`)
+    .then(r=>r.json())
+    .then(d=>{
+      document.getElementById('sug-yt-title').textContent = d.title||'YouTube Video';
+      document.getElementById('sug-yt-preview').style.display = 'block';
+    }).catch(()=>{
+      document.getElementById('sug-yt-title').textContent = 'YouTube Video';
+      document.getElementById('sug-yt-preview').style.display = 'block';
+    });
+}
+
+// ── Listener: send YouTube suggestion ──
+function suggestSongYt() {
+  if (!listenerConn) { toast('⚠️ Not connected to a room'); return; }
+  const url = document.getElementById('sug-yt-input').value.trim();
+  const vid = ytExtractId(url);
+  if (!vid) { toast('⚠️ Paste a valid YouTube link first'); return; }
+  const title = document.getElementById('sug-yt-title').textContent || 'YouTube Video';
+  const myName = lastJoinName || 'Listener';
+  listenerConn.send({
+    type: 'song-request-yt',
+    reqId: 'req_' + Date.now(),
+    title, videoId: vid,
+    suggester: myName
+  });
+  showSugStatus(`⏳ "${title}" sent to host!`);
+  document.getElementById('sug-yt-input').value = '';
+  document.getElementById('sug-yt-preview').style.display = 'none';
+}
+
+function showSugStatus(msg) {
+  const el = document.getElementById('sug-status');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(()=>{ el.style.display='none'; }, 5000);
+}
+
+// ── Host: receiving a file request ──
+const reqChunkBuffers = {};  // reqId -> {chunks:[], received, total, meta}
+
+function hostHandleSongRequestStart(conn, msg) {
+  reqChunkBuffers[msg.reqId] = {
+    chunks:[], received:0, total:msg.fileSize,
+    title:msg.title, suggester:msg.suggester
+  };
+}
+function hostHandleSongRequestChunk(msg) {
+  const buf = reqChunkBuffers[msg.reqId];
+  if (!buf) return;
+  buf.chunks.push(msg.chunk);
+  buf.received += msg.chunk.byteLength;
+}
+function hostHandleSongRequestEnd(msg) {
+  const buf = reqChunkBuffers[msg.reqId];
+  if (!buf) return;
+  // Reassemble
+  const total = buf.chunks.reduce((a,c)=>a+c.byteLength,0);
+  const merged = new Uint8Array(total);
+  let off=0;
+  buf.chunks.forEach(c=>{ merged.set(new Uint8Array(c),off); off+=c.byteLength; });
+  const blob = new Blob([merged], {type:'audio/mpeg'});
+  const file = new File([blob], buf.title+'.mp3', {type:'audio/mpeg'});
+  addPendingRequest({
+    id: msg.reqId, type:'file',
+    title: buf.title, suggester: buf.suggester,
+    file
+  });
+  delete reqChunkBuffers[msg.reqId];
+}
+function hostHandleSongRequestYt(msg) {
+  addPendingRequest({
+    id: msg.reqId, type:'yt',
+    title: msg.title, suggester: msg.suggester,
+    videoId: msg.videoId
+  });
+}
+
+function addPendingRequest(req) {
+  pendingRequests.push(req);
+  renderHostRequests();
+  toast(`🎵 ${req.suggester} suggested "${req.title}"!`);
+  // Announce in chat
+  addChatMessage('host', null, `🎵 ${req.suggester} suggested "${req.title}"`, true);
+  broadcast({ type:'chat', name:'System', text:`🎵 ${req.suggester} suggested "${req.title}"` });
+}
+
+function renderHostRequests() {
+  const card  = document.getElementById('host-requests-card');
+  const list  = document.getElementById('host-requests-list');
+  const badge = document.getElementById('req-badge');
+  const count = document.getElementById('host-req-count');
+  const n = pendingRequests.length;
+  card.style.display = n ? 'block' : 'none';
+  badge.classList.toggle('visible', n>0);
+  badge.textContent = n + ' new';
+  if (count) count.textContent = n;
+  list.innerHTML = '';
+  pendingRequests.forEach(req => {
+    const div = document.createElement('div');
+    div.className = 'request-item';
+    div.innerHTML = `
+      <div class="request-icon">${req.type==='yt'?'▶️':'🎵'}</div>
+      <div class="request-info">
+        <div class="request-title">${req.title}</div>
+        <div class="request-meta">by <span>${req.suggester}</span> · ${req.type==='yt'?'YouTube':'File'}</div>
+      </div>
+      <div class="request-actions">
+        <button class="req-accept" onclick="acceptRequest('${req.id}')" title="Add to queue">✓</button>
+        <button class="req-reject" onclick="rejectRequest('${req.id}')" title="Reject">✕</button>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function acceptRequest(reqId) {
+  const req = pendingRequests.find(r=>r.id===reqId);
+  if (!req) return;
+  pendingRequests = pendingRequests.filter(r=>r.id!==reqId);
+
+  if (req.type==='file' && req.file) {
+    // Add file to queue exactly like normal upload
+    processAudioFile(req.file, () => {
+      toast(`✅ "${req.title}" added to queue!`);
+      broadcast({ type:'chat', name:'System', text:`✅ "${req.title}" by ${req.suggester} was added to the queue!` });
+      addChatMessage('host', null, `✅ "${req.title}" added to the queue!`, true);
+    });
+  } else if (req.type==='yt') {
+    // Switch to YouTube mode and load the video
+    switchSource('youtube');
+    document.getElementById('yt-url-input').value = `https://www.youtube.com/watch?v=${req.videoId}`;
+    ytLoadVideo(req.videoId, req.title);
+    toast(`✅ Playing "${req.title}" from YouTube!`);
+    broadcast({ type:'chat', name:'System', text:`✅ "${req.title}" by ${req.suggester} is now loaded!` });
+    addChatMessage('host', null, `✅ "${req.title}" loaded from YouTube!`, true);
+  }
+
+  // Notify the suggester
+  broadcast({ type:'request-response', reqId, accepted:true, title:req.title });
+  renderHostRequests();
+}
+
+function rejectRequest(reqId) {
+  const req = pendingRequests.find(r=>r.id===reqId);
+  if (!req) return;
+  pendingRequests = pendingRequests.filter(r=>r.id!==reqId);
+  broadcast({ type:'request-response', reqId, accepted:false, title:req.title });
+  renderHostRequests();
+  toast(`❌ "${req.title}" rejected`);
+}
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
