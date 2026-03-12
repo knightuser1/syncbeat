@@ -319,21 +319,7 @@ body::after {
 .track-album { color:var(--text3); font-size:0.65rem; margin-top:2px; }
 
 /* EQ Bars */
-.eq-bars {
-  display:flex;align-items:flex-end;gap:2px;height:28px;margin-top:6px;
-}
-.eq-bar {
-  width:3px; min-height:2px; border-radius:2px 2px 0 0;
-  background: linear-gradient(to top, var(--gold), var(--rose));
-  transform-origin: bottom;
-  animation: eqAnim 0.6s ease-in-out infinite alternate;
-}
-.eq-bar:nth-child(2n)   { animation-delay:0.1s; background:linear-gradient(to top,var(--teal),var(--violet)); }
-.eq-bar:nth-child(3n)   { animation-delay:0.2s; }
-.eq-bar:nth-child(4n)   { animation-delay:0.15s; }
-.eq-bar:nth-child(5n)   { animation-delay:0.3s; }
-@keyframes eqAnim { from{transform:scaleY(0.15)} to{transform:scaleY(1)} }
-.eq-bars.paused .eq-bar { animation-play-state:paused; transform:scaleY(0.15); }
+/* EQ keyframe defined in EQ HOST section below */
 
 /* Progress */
 .progress-wrap {
@@ -674,54 +660,209 @@ input[type=range]::-webkit-slider-thumb {
 .conn-step.err    { border-color:rgba(255,77,114,0.3); color:var(--rose); }
 
 /* ═══════════════════════════════════════════
-   LISTENER HERO
+   EQ BARS — HOST (fixed animation)
+═══════════════════════════════════════════ */
+.eq-bars {
+  display:flex; align-items:flex-end; gap:2px; height:32px; flex-shrink:0;
+}
+.eq-bar {
+  width:3px; border-radius:2px 2px 0 0;
+  background:linear-gradient(to top,var(--gold),var(--rose));
+  transform-origin:bottom; height:100%;
+  animation: eqAnim 0.6s ease-in-out infinite alternate;
+}
+.eq-bar:nth-child(2n)   { animation-delay:0.1s; background:linear-gradient(to top,var(--teal),var(--violet)); }
+.eq-bar:nth-child(3n)   { animation-delay:0.2s; }
+.eq-bar:nth-child(4n)   { animation-delay:0.15s; }
+.eq-bar:nth-child(5n)   { animation-delay:0.3s; }
+@keyframes eqAnim { from{transform:scaleY(0.12)} to{transform:scaleY(1)} }
+/* paused — freeze bars flat, do NOT override with transform so animation resumes correctly */
+.eq-bars.paused .eq-bar { animation-play-state:paused !important; transform:scaleY(0.12); }
+
+/* ═══════════════════════════════════════════
+   LISTENER HERO — FULL VIBRANT REDESIGN
 ═══════════════════════════════════════════ */
 .listener-hero {
-  background: linear-gradient(160deg, rgba(245,200,66,0.06), rgba(0,229,200,0.04));
-  border: 1.5px solid rgba(245,200,66,0.15);
-  border-radius: var(--r); padding:0 0 24px; text-align:center; margin-bottom:16px;
-  overflow:hidden; position:relative;
+  position:relative; overflow:hidden;
+  border-radius: var(--r); margin-bottom:16px;
+  background: linear-gradient(160deg, #0e0818 0%, #110d1f 40%, #0a1420 100%);
+  border: 1.5px solid rgba(139,92,246,0.25);
+  padding: 0 0 22px;
+  text-align:center;
 }
-/* Rainbow strip at top — same as host */
+/* Animated neon border glow */
+.listener-hero::before {
+  content:''; position:absolute; inset:-1px; border-radius:calc(var(--r) + 1px);
+  background: linear-gradient(135deg, var(--violet), var(--rose), var(--gold), var(--teal), var(--violet));
+  background-size:300% 300%;
+  animation: heroBorderSpin 5s linear infinite;
+  z-index:0; opacity:0.5;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  padding:1.5px;
+}
+@keyframes heroBorderSpin {
+  0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%}
+}
+/* Inner content above the border */
+.listener-hero > * { position:relative; z-index:1; }
+
+/* Ambient inner glow blobs */
+.listener-hero-bg {
+  position:absolute; inset:0; z-index:0; pointer-events:none; overflow:hidden;
+}
+.listener-hero-blob {
+  position:absolute; border-radius:50%; filter:blur(60px); opacity:0.18;
+  animation:blobFloat 8s ease-in-out infinite alternate;
+}
+
+/* Rainbow strip */
 .listener-art-strip {
-  height:5px;
-  background: linear-gradient(90deg, var(--gold), var(--rose), var(--violet), var(--teal), var(--gold));
+  height:4px; width:100%;
+  background: linear-gradient(90deg, var(--violet), var(--rose), var(--gold), var(--teal), var(--violet));
   background-size: 300% 100%;
-  animation: artStrip 4s linear infinite;
-  margin-bottom:24px;
+  animation: artStrip 3s linear infinite;
+  margin-bottom:22px;
 }
 .listener-art-strip.paused { animation-play-state:paused; }
 
+/* Big disc */
 .listener-disc-big {
-  width:110px;height:110px;border-radius:50%;margin:0 auto 18px;
-  background:linear-gradient(135deg,var(--gold),var(--rose));
-  display:flex;align-items:center;justify-content:center;font-size:2.4rem;
-  position:relative;
-  box-shadow: 0 0 0 0 rgba(245,200,66,0.4);
-  animation: discGlow 2.5s ease-in-out infinite;
+  width:120px; height:120px; border-radius:50%; margin:0 auto 16px;
+  background: linear-gradient(135deg, var(--violet) 0%, var(--rose) 50%, var(--gold) 100%);
+  display:flex; align-items:center; justify-content:center; font-size:2.6rem;
+  position:relative; overflow:hidden;
+  box-shadow:
+    0 0 0 4px rgba(139,92,246,0.15),
+    0 0 30px rgba(139,92,246,0.4),
+    0 0 60px rgba(255,77,114,0.2);
+  animation: discPulse 3s ease-in-out infinite;
 }
-@keyframes discGlow {
-  0%,100% { box-shadow: 0 0 20px 4px rgba(245,200,66,0.25), 0 0 50px 8px rgba(255,77,114,0.1); }
-  50%      { box-shadow: 0 0 40px 10px rgba(245,200,66,0.45), 0 0 80px 20px rgba(255,77,114,0.2); }
+@keyframes discPulse {
+  0%,100% { box-shadow: 0 0 0 4px rgba(139,92,246,0.15), 0 0 30px rgba(139,92,246,0.4), 0 0 60px rgba(255,77,114,0.2); }
+  50%      { box-shadow: 0 0 0 8px rgba(139,92,246,0.25), 0 0 50px rgba(139,92,246,0.6), 0 0 90px rgba(255,77,114,0.35); }
 }
-.listener-disc-big.spinning { animation: discSpin 3s linear infinite, discGlow 2.5s ease-in-out infinite; }
-.listener-disc-big::after { content:'';position:absolute;width:28px;height:28px;background:var(--bg);border-radius:50%;z-index:1; }
+.listener-disc-big::after {
+  content:''; position:absolute; width:30px; height:30px;
+  background:rgba(12,12,16,0.9); border-radius:50%; z-index:1;
+}
+.listener-disc-big.spinning { animation: discSpin 3s linear infinite, discPulse 3s ease-in-out infinite; }
 
-/* EQ bars on listener side — full size */
+/* Song title + artist */
+.listener-song-name {
+  font-size:1.25rem; font-weight:800; padding:0 20px;
+  background: linear-gradient(135deg, #fff 0%, var(--gold) 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  background-clip:text; line-height:1.3;
+}
+.listener-song-sub {
+  color:var(--text2); font-size:0.75rem; margin-top:5px;
+}
+
+/* Full EQ visualizer — vibrant */
 .listener-eq-full {
-  display:flex;align-items:flex-end;gap:3px;
-  height:36px; justify-content:center; margin:12px auto 4px;
+  display:flex; align-items:flex-end; gap:3px;
+  height:44px; justify-content:center;
+  margin:14px auto 12px; padding:0 24px;
 }
 .listener-eq-full .eq-bar {
-  width:4px; min-height:3px; border-radius:2px 2px 0 0;
-  background:linear-gradient(to top, var(--teal), var(--violet));
-  transform-origin:bottom;
-  animation:eqAnim 0.6s ease-in-out infinite alternate;
+  flex:1; max-width:6px; border-radius:3px 3px 0 0;
+  transform-origin:bottom; height:100%;
+  animation: eqAnim 0.55s ease-in-out infinite alternate;
 }
-.listener-eq-full .eq-bar:nth-child(2n)  { background:linear-gradient(to top,var(--gold),var(--rose)); animation-delay:0.1s; }
-.listener-eq-full .eq-bar:nth-child(3n)  { animation-delay:0.2s; }
-.listener-eq-full .eq-bar:nth-child(5n)  { animation-delay:0.3s; }
-.listener-eq-full.paused .eq-bar { animation-play-state:paused; transform:scaleY(0.15); }
+.listener-eq-full .eq-bar:nth-child(4n+1) { background:linear-gradient(to top,var(--violet),#c084fc); }
+.listener-eq-full .eq-bar:nth-child(4n+2) { background:linear-gradient(to top,var(--rose),var(--gold)); animation-delay:0.1s; }
+.listener-eq-full .eq-bar:nth-child(4n+3) { background:linear-gradient(to top,var(--teal),#67e8f9); animation-delay:0.2s; }
+.listener-eq-full .eq-bar:nth-child(4n+4) { background:linear-gradient(to top,var(--gold),var(--rose)); animation-delay:0.3s; }
+.listener-eq-full.paused .eq-bar { animation-play-state:paused !important; transform:scaleY(0.12); }
+
+/* Badges row */
+.listener-badges-row {
+  display:flex; gap:8px; justify-content:center; flex-wrap:wrap;
+  margin-bottom:8px;
+}
+
+/* Progress + time */
+.listener-progress-wrap {
+  padding:0 20px; margin-top:4px;
+}
+.listener-progress-bar {
+  height:4px; border-radius:99px;
+  background: linear-gradient(90deg,rgba(255,255,255,0.08),rgba(255,255,255,0.08));
+  position:relative; overflow:hidden;
+}
+.listener-progress-fill {
+  height:100%; border-radius:99px;
+  background: linear-gradient(90deg, var(--violet), var(--rose), var(--gold));
+  background-size:200% 100%;
+  animation: progressShimmer 2s linear infinite;
+  transition: width 0.4s linear;
+}
+@keyframes progressShimmer { 0%{background-position:0%} 100%{background-position:200%} }
+.listener-time-row {
+  display:flex; justify-content:space-between;
+  font-size:0.68rem; color:var(--text3);
+  font-family:'JetBrains Mono',monospace; margin-top:5px;
+}
+
+/* Vol row inside hero */
+.listener-vol-row {
+  display:flex; align-items:center; gap:10px;
+  padding:0 24px; margin-top:12px;
+}
+.listener-vol-row input[type=range] {
+  flex:1; accent-color:var(--violet);
+}
+
+/* Share action row inside hero */
+.listener-share-row {
+  display:flex; gap:8px; justify-content:center;
+  margin-top:14px; padding:0 20px;
+}
+
+/* Listener share card (own design) */
+.listener-share-card {
+  background: linear-gradient(135deg, #0e0818, #110d1f, #0a1420);
+  border-radius:18px; padding:26px 24px; text-align:center;
+  border:1px solid rgba(139,92,246,0.3); position:relative; overflow:hidden;
+}
+.listener-share-card::before {
+  content:''; position:absolute; inset:0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(139,92,246,0.18) 0%, transparent 55%),
+    radial-gradient(circle at 80% 70%, rgba(255,77,114,0.14) 0%, transparent 55%),
+    radial-gradient(circle at 50% 100%, rgba(245,200,66,0.1) 0%, transparent 50%);
+}
+.listener-share-inner { position:relative; z-index:1; }
+.listener-share-logo  { font-size:1.6rem; font-weight:800; color:var(--violet); letter-spacing:-0.5px; margin-bottom:2px; }
+.listener-share-tag   { font-size:0.55rem; color:#666; letter-spacing:3px; text-transform:uppercase; margin-bottom:14px; }
+.listener-share-disc  {
+  width:80px; height:80px; border-radius:50%; margin:0 auto 14px;
+  background:linear-gradient(135deg,var(--violet),var(--rose),var(--gold));
+  display:flex; align-items:center; justify-content:center; font-size:1.8rem;
+  position:relative;
+  box-shadow: 0 0 30px rgba(139,92,246,0.5);
+}
+.listener-share-disc::after {
+  content:''; position:absolute; width:20px; height:20px;
+  background:#0e0818; border-radius:50%;
+}
+.listener-share-song   { font-size:1rem; font-weight:800; color:#fff; margin:8px 0 3px; }
+.listener-share-artist { font-size:0.7rem; color:#999; margin-bottom:14px; }
+.listener-share-code   {
+  font-family:'JetBrains Mono',monospace; font-size:1.8rem;
+  color:var(--violet); letter-spacing:8px; margin:12px 0;
+  text-shadow: 0 0 20px rgba(139,92,246,0.6);
+}
+.listener-share-hint   { font-size:0.58rem; color:#555; letter-spacing:2px; text-transform:uppercase; }
+.listener-share-eq {
+  display:flex; align-items:flex-end; gap:3px; justify-content:center;
+  height:20px; margin:10px 0 4px;
+}
+.listener-share-eq span {
+  width:3px; border-radius:2px; display:inline-block;
+  background:var(--violet); opacity:0.7;
+}
 
 /* ═══════════════════════════════════════════
    MOBILE BOTTOM PLAYER
@@ -1197,33 +1338,48 @@ input[type=range]::-webkit-slider-thumb {
 
       <!-- Hero -->
       <div class="listener-hero">
+        <!-- Ambient blobs -->
+        <div class="listener-hero-bg">
+          <div class="listener-hero-blob" style="width:200px;height:200px;background:var(--violet);top:-60px;left:-40px;animation-delay:0s"></div>
+          <div class="listener-hero-blob" style="width:160px;height:160px;background:var(--rose);bottom:-40px;right:-30px;animation-delay:3s"></div>
+          <div class="listener-hero-blob" style="width:120px;height:120px;background:var(--teal);top:30%;left:60%;animation-delay:6s"></div>
+        </div>
+        <!-- Rainbow strip -->
         <div class="listener-art-strip paused" id="listener-art-strip"></div>
+        <!-- Big disc -->
         <div class="listener-disc-big" id="listener-disc">🎵</div>
-        <div style="font-size:1.3rem;font-weight:800;padding:0 16px" id="listener-song-title">Waiting for host...</div>
-        <div style="color:var(--text2);font-size:0.75rem;margin-top:4px" id="listener-song-artist">Stand by</div>
-        <!-- Full EQ bars -->
+        <!-- Song info -->
+        <div class="listener-song-name" id="listener-song-title">Waiting for host...</div>
+        <div class="listener-song-sub" id="listener-song-artist">Stand by</div>
+        <!-- EQ visualizer -->
         <div class="listener-eq-full paused" id="listener-eq-full"></div>
-        <div style="margin-top:8px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+        <!-- Status badges -->
+        <div class="listener-badges-row">
           <span class="badge badge-live" id="listener-status-badge"><span class="dot pulse"></span> Connected</span>
           <span class="badge badge-idle" id="listener-room-badge">——</span>
         </div>
-        <!-- Crown shown when this listener becomes host -->
+        <!-- Crown -->
         <div class="host-crown" id="listener-crown" style="display:none">👑 You are now the Host!</div>
-        <!-- Listener progress bar -->
-        <div style="margin-top:18px;padding:0 16px">
-          <div class="progress-wrap" style="cursor:default;height:3px">
-            <div class="progress-fill" id="listener-progress" style="width:0%"></div>
+        <!-- Progress bar -->
+        <div class="listener-progress-wrap">
+          <div class="listener-progress-bar">
+            <div class="listener-progress-fill" id="listener-progress" style="width:0%"></div>
           </div>
-          <div class="time-row" style="margin-top:4px">
+          <div class="listener-time-row">
             <span id="listener-t-curr">0:00</span>
             <span id="listener-t-total">0:00</span>
           </div>
         </div>
-        <!-- Listener volume -->
-        <div class="vol-row" style="margin-top:14px;padding:0 16px">
-          <span>🔈</span>
+        <!-- Volume -->
+        <div class="listener-vol-row">
+          <span style="font-size:0.85rem">🔈</span>
           <input type="range" id="listener-vol" min="0" max="1" step="0.02" value="0.8" oninput="setListenerVol(this.value)">
-          <span>🔊</span>
+          <span style="font-size:0.85rem">🔊</span>
+        </div>
+        <!-- Share actions -->
+        <div class="listener-share-row">
+          <button class="btn btn-violet btn-sm" onclick="showListenerShareCard()">🖼 Share Card</button>
+          <button class="btn btn-ghost btn-sm" onclick="listenerShareLink()">🔗 Share Link</button>
         </div>
       </div>
 
@@ -1380,6 +1536,29 @@ input[type=range]::-webkit-slider-thumb {
     <div style="display:flex;gap:10px">
       <button class="btn btn-violet" id="transfer-confirm-btn" onclick="confirmTransfer()" disabled style="flex:1">👑 Transfer Now</button>
       <button class="btn btn-ghost" onclick="closeTransferModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Listener Share Card Modal -->
+<div id="listener-share-modal" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.88);backdrop-filter:blur(8px);align-items:center;justify-content:center;padding:20px;flex-direction:column;gap:14px">
+  <div style="max-width:360px;width:100%">
+    <div class="listener-share-card" id="listener-share-card-preview">
+      <div class="listener-share-inner">
+        <div class="listener-share-logo">🎵 SyncBeat</div>
+        <div class="listener-share-tag">Listening Together</div>
+        <div class="listener-share-disc" id="lsc-disc">🎵</div>
+        <div class="listener-share-song" id="lsc-song">—</div>
+        <div class="listener-share-artist" id="lsc-artist">—</div>
+        <!-- Mini EQ decoration -->
+        <div class="listener-share-eq" id="lsc-eq"></div>
+        <div class="listener-share-code" id="lsc-code">——</div>
+        <div class="listener-share-hint">Join at syncbeat.live · Enter code above</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button class="btn btn-violet" style="flex:1" onclick="downloadListenerShareCard()">📸 Save Image</button>
+      <button class="btn btn-ghost" onclick="closeListenerShareCard()">✕ Close</button>
     </div>
   </div>
 </div>
@@ -2165,6 +2344,50 @@ function showShareCard() {
   modal.style.display='flex';
 }
 function closeShareCard() { document.getElementById('share-modal').style.display='none'; }
+
+// ── Listener Share ──
+function showListenerShareCard() {
+  const song   = document.getElementById('listener-song-title').textContent  || 'Listening Live';
+  const artist = document.getElementById('listener-song-artist').textContent || '—';
+  const code   = document.getElementById('listener-room-badge').textContent  || '——';
+  const disc   = document.getElementById('listener-disc').textContent        || '🎵';
+  document.getElementById('lsc-song').textContent   = song;
+  document.getElementById('lsc-artist').textContent = artist;
+  document.getElementById('lsc-code').textContent   = code;
+  document.getElementById('lsc-disc').textContent   = disc;
+  // Build tiny EQ bars inside card
+  const eq = document.getElementById('lsc-eq');
+  const heights = [8,14,18,12,20,16,10,18,14,8,16,12];
+  eq.innerHTML = heights.map(h =>
+    `<span style="height:${h}px;background:var(--violet);opacity:${0.5+h/40}"></span>`
+  ).join('');
+  const modal = document.getElementById('listener-share-modal');
+  modal.style.display='flex';
+}
+function closeListenerShareCard() {
+  document.getElementById('listener-share-modal').style.display='none';
+}
+function listenerShareLink() {
+  const code = document.getElementById('listener-room-badge').textContent||'';
+  const url  = window.location.href.split('?')[0] + (code&&code!=='——' ? '?join='+code : '');
+  if (navigator.share) navigator.share({ title:'Join SyncBeat', text:`Come listen with me! Room: ${code}`, url });
+  else { navigator.clipboard.writeText(url).catch(()=>{}); toast('🔗 Link copied!'); }
+}
+function downloadListenerShareCard() {
+  const el = document.getElementById('listener-share-card-preview');
+  if (typeof html2canvas !== 'undefined') {
+    html2canvas(el, { backgroundColor:null, scale:2 }).then(canvas => {
+      const a = document.createElement('a');
+      a.download = 'syncbeat-listening.png';
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    });
+  } else {
+    // Fallback: copy the link
+    listenerShareLink();
+    toast('📸 Install html2canvas for image download — link copied instead!');
+  }
+}
 function downloadShareCard() {
   // Simple PNG download using Canvas
   const card = document.getElementById('share-card-preview');
