@@ -1145,7 +1145,7 @@ input[type=range]::-webkit-slider-thumb {
 <div id="reactions-stage"></div>
 
 <!-- Hidden audio -->
-<audio id="host-audio-el"></audio>
+<audio id="host-audio-el" preload="auto"></audio>
 <!-- Hidden YouTube players -->
 <div id="yt-host-iframe-wrap"></div>
 <div id="yt-listener-iframe-wrap"></div>
@@ -1975,63 +1975,63 @@ function loadTrack(index) {
   currentTrack = index;
   const t = queue[index];
 
-  // Reset display before loading
+  // Reset time display
   document.getElementById('t-total').textContent = '0:00';
   document.getElementById('t-curr').textContent  = '0:00';
   document.getElementById('seek-fill').style.width = '0%';
+  if (document.getElementById('mini-prog')) document.getElementById('mini-prog').style.width = '0%';
 
   hostAudioEl.src = URL.createObjectURL(t.file);
-  hostAudioEl.preload = 'metadata';
+  hostAudioEl.preload = 'auto';
   hostAudioEl.load();
 
-  // UI
-  document.getElementById('upload-zone').style.display = 'none';
+  // UI update
+  document.getElementById('upload-zone').style.display        = 'none';
   document.getElementById('host-track-display').style.display = 'flex';
-  document.getElementById('host-controls').style.display = 'block';
-  document.getElementById('host-track-title').textContent = t.title;
-  document.getElementById('host-track-artist').textContent = t.artist || 'Unknown Artist';
-  document.getElementById('host-track-album').textContent = t.album || '';
+  document.getElementById('host-controls').style.display      = 'block';
+  document.getElementById('host-track-title').textContent     = t.title;
+  document.getElementById('host-track-artist').textContent    = t.artist || 'Unknown Artist';
+  document.getElementById('host-track-album').textContent     = t.album  || '';
 
-  // Album art
-  const img = document.getElementById('host-art-img');
+  const img   = document.getElementById('host-art-img');
   const emoji = document.getElementById('host-art-emoji');
-  if (t.artUrl) { img.src=t.artUrl; img.style.display='block'; emoji.style.display='none'; }
+  if (t.artUrl) { img.src = t.artUrl; img.style.display='block'; emoji.style.display='none'; }
   else          { img.style.display='none'; emoji.style.display='block'; }
 
   const miniArt = document.getElementById('mini-art');
-  if (t.artUrl) { miniArt.innerHTML=`<img src="${t.artUrl}" style="width:44px;height:44px;border-radius:9px;object-fit:cover">`; }
-  else          { miniArt.textContent='🎵'; }
-
-  document.getElementById('mini-title').textContent = t.title;
+  miniArt.innerHTML = t.artUrl
+    ? `<img src="${t.artUrl}" style="width:44px;height:44px;border-radius:9px;object-fit:cover">`
+    : '🎵';
+  document.getElementById('mini-title').textContent  = t.title;
   document.getElementById('mini-artist').textContent = t.artist || 'Unknown Artist';
   document.getElementById('mini-player').style.display = 'block';
 
   buildEQ('host-eq');
   renderHostQueue();
-  updateStatTime();
 
-  // Duration — fire on both events to handle all browsers/mobile
-  const setDuration = () => {
-    if (hostAudioEl.duration && isFinite(hostAudioEl.duration)) {
+  // Duration — listen on multiple events for reliability across browsers/mobile
+  hostAudioEl.onloadedmetadata = () => {
+    if (isFinite(hostAudioEl.duration))
       document.getElementById('t-total').textContent = fmt(hostAudioEl.duration);
-    }
   };
-  hostAudioEl.onloadedmetadata = setDuration;
-  hostAudioEl.oncanplay = setDuration;
-
+  hostAudioEl.ondurationchange = () => {
+    if (isFinite(hostAudioEl.duration))
+      document.getElementById('t-total').textContent = fmt(hostAudioEl.duration);
+  };
+  hostAudioEl.oncanplay = () => {
+    if (isFinite(hostAudioEl.duration) && document.getElementById('t-total').textContent === '0:00')
+      document.getElementById('t-total').textContent = fmt(hostAudioEl.duration);
+  };
   hostAudioEl.ontimeupdate = () => {
-    if (!hostAudioEl.duration || !isFinite(hostAudioEl.duration)) return;
+    if (!isFinite(hostAudioEl.duration) || !hostAudioEl.duration) return;
     const p = hostAudioEl.currentTime / hostAudioEl.duration * 100;
     document.getElementById('seek-fill').style.width = p + '%';
-    document.getElementById('mini-prog').style.width  = p + '%';
+    if (document.getElementById('mini-prog')) document.getElementById('mini-prog').style.width = p + '%';
     document.getElementById('t-curr').textContent = fmt(hostAudioEl.currentTime);
-    // Also update duration here in case metadata fires late
-    if (document.getElementById('t-total').textContent === '0:00') {
+    // Fallback duration in case metadata fired late
+    if (document.getElementById('t-total').textContent === '0:00')
       document.getElementById('t-total').textContent = fmt(hostAudioEl.duration);
-    }
-    updateStatTime();
   };
-
   hostAudioEl.onended = () => {
     isPlaying = false;
     setHostPlayUI(false);
@@ -2040,105 +2040,112 @@ function loadTrack(index) {
       hostAudioEl.play().catch(()=>{});
       isPlaying = true;
       setHostPlayUI(true);
+      const playAt = Date.now() + PLAY_COUNTDOWN_MS;
+      broadcastScheduled({ type:'scheduled-play', position:0, playAt,
+        trackIndex: currentTrack, trackName: queue[currentTrack]?.title });
     } else if (currentTrack + 1 < queue.length) {
-      // Auto-advance to next song
       hostNext();
     }
-    // If it's the last song and no loop, just stop
   };
 
-  // Send to all connected listeners
+  // Send file to all listeners (preload for next song, or main file for current)
   broadcastFileAll(index);
-}
-
-function renderHostQueue() {
-  const list = document.getElementById('host-queue-list');
-  if (!queue.length) {
-    list.innerHTML='<div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:16px">Queue is empty — upload songs above</div>';
-    return;
-  }
-  list.innerHTML='';
-  queue.forEach((t, i) => {
-    const div = document.createElement('div');
-    div.className = 'queue-item'+(i===currentTrack?' playing':'');
-    div.innerHTML = `
-      <div class="q-num">${i===currentTrack?'▶':i+1}</div>
-      <div class="q-art">${t.artUrl?`<img src="${t.artUrl}" alt="">`:'🎵'}</div>
-      <div class="q-info">
-        <div class="q-name">${t.title}</div>
-        <div class="q-artist">${t.artist||'Unknown'}</div>
-      </div>
-      <div class="q-actions">
-        <button class="btn btn-ghost btn-xs" onclick="removeFromQueue(${i},event)">✕</button>
-      </div>
-    `;
-    div.onclick = () => {
-      loadTrack(i); // loadTrack calls broadcastFileAll internally
-      broadcast({ type:'queue-update', queue:queueMeta(), currentTrack: i });
-      if (isPlaying) {
-        const playAt = Date.now() + PLAY_COUNTDOWN_MS;
-        setTimeout(() => { hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
-        broadcastScheduled({ type:'scheduled-play', position:0, playAt,
-          trackIndex:i, trackName:queue[i]?.title });
-      }
-    };
-    list.appendChild(div);
-  });
-  document.getElementById('stat-queue').textContent = queue.length;
-}
-
-function removeFromQueue(i, e) {
-  e.stopPropagation();
-  queue.splice(i, 1);
-  if (currentTrack >= i) currentTrack = Math.max(0, currentTrack-1);
-  renderHostQueue();
-  broadcast({ type:'queue-update', queue:queueMeta(), currentTrack });
-}
-
-function clearQueue() {
-  queue = []; currentTrack = -1;
-  hostAudioEl.pause(); hostAudioEl.src='';
-  isPlaying = false;
-  setHostPlayUI(false);
-  document.getElementById('upload-zone').style.display='block';
-  document.getElementById('host-track-display').style.display='none';
-  document.getElementById('host-controls').style.display='none';
-  document.getElementById('mini-player').style.display='none';
-  renderHostQueue();
-  // Tell listeners to stop and reset their player
-  broadcast({ type:'stop-audio' });
-  broadcast({ type:'queue-update', queue: [] });
-}
-
-function queueMeta() {
-  return queue.map(t => ({ title:t.title, artist:t.artist||'', album:t.album||'', hasArt:!!t.artUrl }));
+  // Broadcast updated queue so listeners see new "NOW / UP NEXT" immediately
+  broadcast({ type:'queue-update', queue:queueMeta(), currentTrack: index });
 }
 
 function hostNext() {
   if (!queue.length) return;
   let next;
   if (shuffleMode) next = Math.floor(Math.random() * queue.length);
-  else next = (currentTrack + 1) % queue.length;
-  loadTrack(next); // loadTrack already calls broadcastFileAll internally
-  broadcast({ type:'queue-update', queue:queueMeta(), currentTrack: next });
-  // Always play on next (whether triggered by button or auto-advance)
+  else             next = (currentTrack + 1) % queue.length;
+  loadTrack(next);  // handles broadcastFileAll + queue-update + UI
+  // Always start playing
   isPlaying = true;
   setHostPlayUI(true);
   const playAt = Date.now() + PLAY_COUNTDOWN_MS;
-  setTimeout(() => { hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
-  broadcastScheduled({ type:'scheduled-play', position:0, playAt, trackIndex:next, trackName:queue[next]?.title });
+  setTimeout(() => hostAudioEl.play().catch(()=>{}), PLAY_COUNTDOWN_MS);
+  broadcastScheduled({ type:'scheduled-play', position:0, playAt,
+    trackIndex: next, trackName: queue[next]?.title });
 }
 
 function hostPrev() {
   if (!queue.length) return;
   const prev = (currentTrack - 1 + queue.length) % queue.length;
-  loadTrack(prev); // loadTrack already calls broadcastFileAll internally
-  broadcast({ type:'queue-update', queue:queueMeta(), currentTrack: prev });
+  loadTrack(prev);  // handles broadcastFileAll + queue-update + UI
   if (isPlaying) {
     const playAt = Date.now() + PLAY_COUNTDOWN_MS;
-    setTimeout(() => { hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
-    broadcastScheduled({ type:'scheduled-play', position:0, playAt, trackIndex:prev, trackName:queue[prev]?.title });
+    setTimeout(() => hostAudioEl.play().catch(()=>{}), PLAY_COUNTDOWN_MS);
+    broadcastScheduled({ type:'scheduled-play', position:0, playAt,
+      trackIndex: prev, trackName: queue[prev]?.title });
   }
+}
+
+function renderHostQueue() {
+  const list = document.getElementById('host-queue-list');
+  if (!queue.length) {
+    list.innerHTML = '<div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:16px">Queue is empty — upload songs above</div>';
+    return;
+  }
+  list.innerHTML = '';
+  queue.forEach((t, i) => {
+    const isNow  = i === currentTrack;
+    const isNext = i === currentTrack + 1;
+    const div = document.createElement('div');
+    div.className = 'queue-item' + (isNow ? ' playing' : '');
+    div.innerHTML = `
+      <div class="q-num">${isNow ? '▶' : i + 1}</div>
+      <div class="q-art">${t.artUrl ? `<img src="${t.artUrl}" alt="">` : '🎵'}</div>
+      <div class="q-info">
+        <div class="q-name">${t.title}</div>
+        <div class="q-artist">${t.artist || 'Unknown'}${isNext ? ' <span style="font-size:0.55rem;background:rgba(139,92,246,0.2);color:var(--violet);padding:1px 6px;border-radius:99px;font-weight:800">UP NEXT</span>' : ''}</div>
+      </div>
+      <div class="q-actions">
+        <button class="btn btn-ghost btn-xs" onclick="removeFromQueue(${i},event)">✕</button>
+      </div>
+    `;
+    div.onclick = () => {
+      loadTrack(i);
+      if (isPlaying) {
+        const playAt = Date.now() + PLAY_COUNTDOWN_MS;
+        setTimeout(() => hostAudioEl.play().catch(()=>{}), PLAY_COUNTDOWN_MS);
+        broadcastScheduled({ type:'scheduled-play', position:0, playAt,
+          trackIndex: i, trackName: queue[i]?.title });
+      }
+    };
+    list.appendChild(div);
+  });
+  if (document.getElementById('stat-queue'))
+    document.getElementById('stat-queue').textContent = queue.length;
+}
+
+function removeFromQueue(i, e) {
+  e.stopPropagation();
+  queue.splice(i, 1);
+  if (currentTrack >= i) currentTrack = Math.max(0, currentTrack - 1);
+  renderHostQueue();
+  broadcast({ type:'queue-update', queue:queueMeta(), currentTrack });
+}
+
+function clearQueue() {
+  queue = []; currentTrack = -1;
+  hostAudioEl.pause(); hostAudioEl.src = '';
+  isPlaying = false;
+  setHostPlayUI(false);
+  document.getElementById('t-total').textContent = '0:00';
+  document.getElementById('t-curr').textContent  = '0:00';
+  document.getElementById('seek-fill').style.width = '0%';
+  document.getElementById('upload-zone').style.display        = 'block';
+  document.getElementById('host-track-display').style.display = 'none';
+  document.getElementById('host-controls').style.display      = 'none';
+  document.getElementById('mini-player').style.display        = 'none';
+  renderHostQueue();
+  broadcast({ type:'stop-audio' });
+  broadcast({ type:'queue-update', queue:[] });
+}
+
+function queueMeta() {
+  return queue.map(t => ({ title:t.title, artist:t.artist||'', album:t.album||'', hasArt:!!t.artUrl }));
 }
 
 function toggleLoop() {
