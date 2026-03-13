@@ -1975,7 +1975,13 @@ function loadTrack(index) {
   currentTrack = index;
   const t = queue[index];
 
+  // Reset display before loading
+  document.getElementById('t-total').textContent = '0:00';
+  document.getElementById('t-curr').textContent  = '0:00';
+  document.getElementById('seek-fill').style.width = '0%';
+
   hostAudioEl.src = URL.createObjectURL(t.file);
+  hostAudioEl.preload = 'metadata';
   hostAudioEl.load();
 
   // UI
@@ -2004,20 +2010,41 @@ function loadTrack(index) {
   renderHostQueue();
   updateStatTime();
 
-  hostAudioEl.onloadedmetadata = () => {
-    document.getElementById('t-total').textContent = fmt(hostAudioEl.duration);
+  // Duration — fire on both events to handle all browsers/mobile
+  const setDuration = () => {
+    if (hostAudioEl.duration && isFinite(hostAudioEl.duration)) {
+      document.getElementById('t-total').textContent = fmt(hostAudioEl.duration);
+    }
   };
+  hostAudioEl.onloadedmetadata = setDuration;
+  hostAudioEl.oncanplay = setDuration;
+
   hostAudioEl.ontimeupdate = () => {
-    if (!hostAudioEl.duration) return;
-    const p = hostAudioEl.currentTime/hostAudioEl.duration*100;
-    document.getElementById('seek-fill').style.width = p+'%';
-    document.getElementById('mini-prog').style.width = p+'%';
+    if (!hostAudioEl.duration || !isFinite(hostAudioEl.duration)) return;
+    const p = hostAudioEl.currentTime / hostAudioEl.duration * 100;
+    document.getElementById('seek-fill').style.width = p + '%';
+    document.getElementById('mini-prog').style.width  = p + '%';
     document.getElementById('t-curr').textContent = fmt(hostAudioEl.currentTime);
+    // Also update duration here in case metadata fires late
+    if (document.getElementById('t-total').textContent === '0:00') {
+      document.getElementById('t-total').textContent = fmt(hostAudioEl.duration);
+    }
     updateStatTime();
   };
+
   hostAudioEl.onended = () => {
-    if (loopMode) { hostAudioEl.play(); }
-    else hostNext();
+    isPlaying = false;
+    setHostPlayUI(false);
+    if (loopMode) {
+      hostAudioEl.currentTime = 0;
+      hostAudioEl.play().catch(()=>{});
+      isPlaying = true;
+      setHostPlayUI(true);
+    } else if (currentTrack + 1 < queue.length) {
+      // Auto-advance to next song
+      hostNext();
+    }
+    // If it's the last song and no loop, just stop
   };
 
   // Send to all connected listeners
@@ -2046,13 +2073,11 @@ function renderHostQueue() {
       </div>
     `;
     div.onclick = () => {
-      loadTrack(i);
-      // Always send new file to all listeners when host manually picks a track
-      broadcastFileAll(i);
+      loadTrack(i); // loadTrack calls broadcastFileAll internally
+      broadcast({ type:'queue-update', queue:queueMeta(), currentTrack: i });
       if (isPlaying) {
-        hostAudioEl.play().catch(()=>{});
         const playAt = Date.now() + PLAY_COUNTDOWN_MS;
-        setTimeout(()=>{ hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
+        setTimeout(() => { hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
         broadcastScheduled({ type:'scheduled-play', position:0, playAt,
           trackIndex:i, trackName:queue[i]?.title });
       }
@@ -2094,21 +2119,20 @@ function hostNext() {
   let next;
   if (shuffleMode) next = Math.floor(Math.random() * queue.length);
   else next = (currentTrack + 1) % queue.length;
-  loadTrack(next);
-  broadcastFileAll(next);  // send new file to all listeners first
+  loadTrack(next); // loadTrack already calls broadcastFileAll internally
   broadcast({ type:'queue-update', queue:queueMeta(), currentTrack: next });
-  if (isPlaying) {
-    const playAt = Date.now() + PLAY_COUNTDOWN_MS;
-    setTimeout(() => { hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
-    broadcastScheduled({ type:'scheduled-play', position:0, playAt, trackIndex:next, trackName:queue[next]?.title });
-  }
+  // Always play on next (whether triggered by button or auto-advance)
+  isPlaying = true;
+  setHostPlayUI(true);
+  const playAt = Date.now() + PLAY_COUNTDOWN_MS;
+  setTimeout(() => { hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
+  broadcastScheduled({ type:'scheduled-play', position:0, playAt, trackIndex:next, trackName:queue[next]?.title });
 }
 
 function hostPrev() {
   if (!queue.length) return;
   const prev = (currentTrack - 1 + queue.length) % queue.length;
-  loadTrack(prev);
-  broadcastFileAll(prev);  // send new file to all listeners first
+  loadTrack(prev); // loadTrack already calls broadcastFileAll internally
   broadcast({ type:'queue-update', queue:queueMeta(), currentTrack: prev });
   if (isPlaying) {
     const playAt = Date.now() + PLAY_COUNTDOWN_MS;
