@@ -1781,6 +1781,7 @@ let listenerConn = null;
 let listenerAudio = null;
 let listenerQueue = [];
 let listenerCurrentTrack = -1;
+let listenerPendingPlay = null;
 let listenerHostName = '';
 let receivedChunks = [];
 let expectedSize = 0;
@@ -1949,7 +1950,7 @@ async function processAudioFile(file, onDone) {
   const meta = await readID3(file);
   queue.push({ file, ...meta });
   renderHostQueue();
-  broadcast({ type:'queue-update', queue:queueMeta() });
+  broadcast({ type:'queue-update', queue:queueMeta(), currentTrack });
   if (currentTrack === -1) loadTrack(0);
   if (onDone) onDone();
 }
@@ -2029,7 +2030,18 @@ function renderHostQueue() {
         <button class="btn btn-ghost btn-xs" onclick="removeFromQueue(${i},event)">✕</button>
       </div>
     `;
-    div.onclick = () => { loadTrack(i); if(isPlaying){hostAudioEl.play();} };
+    div.onclick = () => {
+      loadTrack(i);
+      // Always send new file to all listeners when host manually picks a track
+      broadcastFileAll(i);
+      if (isPlaying) {
+        hostAudioEl.play().catch(()=>{});
+        const playAt = Date.now() + PLAY_COUNTDOWN_MS;
+        setTimeout(()=>{ hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
+        broadcastScheduled({ type:'scheduled-play', position:0, playAt,
+          trackIndex:i, trackName:queue[i]?.title });
+      }
+    };
     list.appendChild(div);
   });
   document.getElementById('stat-queue').textContent = queue.length;
@@ -2040,7 +2052,7 @@ function removeFromQueue(i, e) {
   queue.splice(i, 1);
   if (currentTrack >= i) currentTrack = Math.max(0, currentTrack-1);
   renderHostQueue();
-  broadcast({ type:'queue-update', queue: queueMeta() });
+  broadcast({ type:'queue-update', queue:queueMeta(), currentTrack });
 }
 
 function clearQueue() {
@@ -2068,6 +2080,8 @@ function hostNext() {
   if (shuffleMode) next = Math.floor(Math.random() * queue.length);
   else next = (currentTrack + 1) % queue.length;
   loadTrack(next);
+  broadcastFileAll(next);  // send new file to all listeners first
+  broadcast({ type:'queue-update', queue:queueMeta(), currentTrack: next });
   if (isPlaying) {
     const playAt = Date.now() + PLAY_COUNTDOWN_MS;
     setTimeout(() => { hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
@@ -2079,6 +2093,8 @@ function hostPrev() {
   if (!queue.length) return;
   const prev = (currentTrack - 1 + queue.length) % queue.length;
   loadTrack(prev);
+  broadcastFileAll(prev);  // send new file to all listeners first
+  broadcast({ type:'queue-update', queue:queueMeta(), currentTrack: prev });
   if (isPlaying) {
     const playAt = Date.now() + PLAY_COUNTDOWN_MS;
     setTimeout(() => { hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
@@ -2938,7 +2954,9 @@ function onHostMsg(msg) {
   if (msg.type==='reaction') spawnReaction(msg.emoji);
   // Queue update
   if (msg.type==='queue-update') {
-    listenerQueue = msg.queue||[];
+    listenerQueue = msg.queue || [];
+    // Sync which track is currently active if host sent it
+    if (msg.currentTrack !== undefined) listenerCurrentTrack = msg.currentTrack;
     renderListenerQueue();
   }
   // Vote update
@@ -2948,11 +2966,15 @@ function onHostMsg(msg) {
       renderListenerQueue();
     }
   }
-  // Track switch
+  // Track switch — host changed track, listener needs new file
   if (msg.type==='track-switch') {
     listenerCurrentTrack = msg.trackIndex;
-    document.getElementById('listener-song-title').textContent = msg.trackName||'—';
-    document.getElementById('listener-song-artist').textContent = msg.artist||'';
+    document.getElementById('listener-song-title').textContent  = msg.trackName || '—';
+    document.getElementById('listener-song-artist').textContent = msg.artist    || '';
+    // Reset disc and progress while new file loads
+    document.getElementById('listener-disc').textContent = '🎵';
+    document.getElementById('listener-disc').style.backgroundImage = '';
+    document.getElementById('listener-progress').style.width = '0%';
     renderListenerQueue();
   }
   // File start
@@ -2981,36 +3003,80 @@ function onHostMsg(msg) {
   }
   // File end
   if (msg.type==='file-end') {
-    const blob=new Blob(receivedChunks,{type:'audio/mpeg'});
-    const url=URL.createObjectURL(blob);
-    if(!listenerAudio){listenerAudio=new Audio();listenerAudio.volume=parseFloat(document.getElementById('listener-vol').value);}
-    else{listenerAudio.pause();listenerAudio.src='';}
-    listenerAudio.src=url;
+    const blob = new Blob(receivedChunks, {type:'audio/mpeg'});
+    const url  = URL.createObjectURL(blob);
+    if (!listenerAudio) {
+      listenerAudio = new Audio();
+      listenerAudio.volume = parseFloat(document.getElementById('listener-vol').value);
+    } else {
+      listenerAudio.pause();
+      listenerAudio.src = '';
+    }
+    listenerAudio.src = url;
     listenerAudio.load();
-    listenerAudio.ontimeupdate=()=>{
-      if(!listenerAudio.duration)return;
-      const p=listenerAudio.currentTime/listenerAudio.duration*100;
-      document.getElementById('listener-progress').style.width=p+'%';
-      document.getElementById('listener-t-curr').textContent=fmt(listenerAudio.currentTime);
+    listenerCurrentTrack = msg.trackIndex ?? listenerCurrentTrack;
+    listenerAudio.ontimeupdate = () => {
+      if (!listenerAudio.duration) return;
+      const p = listenerAudio.currentTime / listenerAudio.duration * 100;
+      document.getElementById('listener-progress').style.width = p + '%';
+      document.getElementById('listener-t-curr').textContent = fmt(listenerAudio.currentTime);
     };
-    listenerAudio.onloadedmetadata=()=>{
-      document.getElementById('listener-t-total').textContent=fmt(listenerAudio.duration);
+    listenerAudio.onloadedmetadata = () => {
+      document.getElementById('listener-t-total').textContent = fmt(listenerAudio.duration);
     };
-    document.getElementById('listener-song-artist').textContent=listenerQueue[msg.trackIndex]?.artist||'Ready';
-    setListenerBadge('live','Ready ✓');
-    receivedChunks=[];
+    const trackMeta = listenerQueue[msg.trackIndex];
+    if (trackMeta) {
+      document.getElementById('listener-song-title').textContent  = trackMeta.title  || 'Playing...';
+      document.getElementById('listener-song-artist').textContent = trackMeta.artist || 'Ready';
+    } else {
+      document.getElementById('listener-song-artist').textContent = 'Ready';
+    }
+    renderListenerQueue();
+    setListenerBadge('live', 'Ready ✓');
+    receivedChunks = [];
     toast('✅ Audio ready!');
+
+    // If there was a pending scheduled-play waiting for this file, execute it now
+    if (listenerPendingPlay) {
+      const pending = listenerPendingPlay;
+      listenerPendingPlay = null;
+      const waitMs = Math.max(0, pending.playAt - Date.now());
+      listenerAudio.currentTime = pending.position || 0;
+      clearTimeout(listenerAudio._playTimer);
+      listenerAudio._playTimer = setTimeout(() => {
+        listenerAudio.play().then(() => {
+          setListenerPlayUI(true);
+          toast('🎵 Playing in sync!');
+        }).catch(() => {
+          toast('🔔 Tap anywhere to start audio');
+          const resume = () => {
+            listenerAudio.currentTime = pending.position || 0;
+            listenerAudio.play().catch(()=>{});
+            setListenerPlayUI(true);
+          };
+          document.addEventListener('click', resume, {once:true});
+          document.addEventListener('touchstart', resume, {once:true});
+        });
+      }, waitMs);
+    }
   }
   // Scheduled Play — all listeners target same absolute timestamp
   if (msg.type==='scheduled-play') {
-    if(!listenerAudio?.src){
-      if(listenerConn?.open)listenerConn.send({type:'request-file',trackIndex:msg.trackIndex??0});
-      toast('⏳ Loading audio...');return;
+    const needTrack = msg.trackIndex ?? 0;
+    // If we don't have audio OR we have a different track loaded, request the correct file first
+    const hasCorrectTrack = listenerAudio?.src && listenerCurrentTrack === needTrack;
+    if (!hasCorrectTrack) {
+      listenerCurrentTrack = needTrack;
+      if (listenerConn?.open) listenerConn.send({ type:'request-file', trackIndex: needTrack });
+      // Store play intent — execute once file arrives
+      listenerPendingPlay = msg;
+      if (msg.trackName) document.getElementById('listener-song-title').textContent = msg.trackName;
+      toast('⏳ Loading new track...');
+      return;
     }
     const now = Date.now();
-    const waitMs = Math.max(0, msg.playAt - now); // how long to wait
-    if(msg.trackName) document.getElementById('listener-song-title').textContent=msg.trackName;
-    // Pre-seek so audio is ready at the right position before play() is called
+    const waitMs = Math.max(0, msg.playAt - now);
+    if (msg.trackName) document.getElementById('listener-song-title').textContent = msg.trackName;
     listenerAudio.currentTime = msg.position || 0;
     clearTimeout(listenerAudio._playTimer);
     listenerAudio._playTimer = setTimeout(() => {
