@@ -1782,6 +1782,8 @@ let listenerAudio = null;
 let listenerQueue = [];
 let listenerCurrentTrack = -1;
 let listenerPendingPlay = null;
+let listenerBuffered = new Set(); // track indices whose audio is already received
+let listenerBlobUrls = {};        // trackIndex -> blob URL (preloaded audio)
 let listenerHostName = '';
 let receivedChunks = [];
 let expectedSize = 0;
@@ -1934,15 +1936,28 @@ async function readID3(file) {
 async function filesAdded(input) {
   const files = Array.from(input.files);
   if (!files.length) return;
+  const startIndex = queue.length;
   for (const file of files) {
     if (!file.type.startsWith('audio/')) continue;
     const meta = await readID3(file);
     queue.push({ file, ...meta });
   }
   renderHostQueue();
+  // Broadcast updated queue to listeners
+  broadcast({ type:'queue-update', queue:queueMeta(), currentTrack });
+  // Auto-load first track if nothing playing
   if (currentTrack === -1) loadTrack(0);
   toast(`✅ Added ${files.length} song${files.length>1?'s':''} to queue`);
-  input.value='';
+  input.value = '';
+  // Preload ALL newly added songs to listeners in the background
+  // Small delay so current track transfer doesn't compete
+  setTimeout(() => {
+    for (let i = startIndex; i < queue.length; i++) {
+      if (i !== currentTrack) { // current track already sent via loadTrack→broadcastFileAll
+        broadcastFileAll(i);
+      }
+    }
+  }, 500);
 }
 
 // Add a single File object to queue (used when accepting listener requests)
@@ -3003,79 +3018,122 @@ function onHostMsg(msg) {
   }
   // File end
   if (msg.type==='file-end') {
+    const trackIdx = msg.trackIndex ?? listenerCurrentTrack;
     const blob = new Blob(receivedChunks, {type:'audio/mpeg'});
     const url  = URL.createObjectURL(blob);
-    if (!listenerAudio) {
-      listenerAudio = new Audio();
-      listenerAudio.volume = parseFloat(document.getElementById('listener-vol').value);
+
+    // Store blob URL for instant playback later (preload)
+    listenerBlobUrls[trackIdx] = url;
+    listenerBuffered.add(trackIdx);
+    receivedChunks = [];
+
+    const trackMeta = listenerQueue[trackIdx];
+
+    // Only set as active audio if this is the current track
+    if (trackIdx === listenerCurrentTrack) {
+      if (!listenerAudio) {
+        listenerAudio = new Audio();
+        listenerAudio.volume = parseFloat(document.getElementById('listener-vol').value);
+      } else {
+        listenerAudio.pause();
+        listenerAudio.src = '';
+      }
+      listenerAudio.src = url;
+      listenerAudio.load();
+      listenerCurrentTrack = trackIdx;
+      listenerAudio.ontimeupdate = () => {
+        if (!listenerAudio.duration) return;
+        const p = listenerAudio.currentTime / listenerAudio.duration * 100;
+        document.getElementById('listener-progress').style.width = p + '%';
+        document.getElementById('listener-t-curr').textContent = fmt(listenerAudio.currentTime);
+      };
+      listenerAudio.onloadedmetadata = () => {
+        document.getElementById('listener-t-total').textContent = fmt(listenerAudio.duration);
+      };
+      if (trackMeta) {
+        document.getElementById('listener-song-title').textContent  = trackMeta.title  || 'Playing...';
+        document.getElementById('listener-song-artist').textContent = trackMeta.artist || 'Ready';
+      } else {
+        document.getElementById('listener-song-artist').textContent = 'Ready';
+      }
+      setListenerBadge('live', 'Ready ✓');
+      toast('✅ Audio ready!');
+
+      // Execute any pending scheduled-play that was waiting for this file
+      if (listenerPendingPlay && listenerPendingPlay.trackIndex === trackIdx) {
+        const pending = listenerPendingPlay;
+        listenerPendingPlay = null;
+        const waitMs = Math.max(0, pending.playAt - Date.now());
+        listenerAudio.currentTime = pending.position || 0;
+        clearTimeout(listenerAudio._playTimer);
+        listenerAudio._playTimer = setTimeout(() => {
+          listenerAudio.play().then(() => {
+            setListenerPlayUI(true);
+            toast('🎵 Playing in sync!');
+          }).catch(() => {
+            toast('🔔 Tap anywhere to start audio');
+            const resume = () => {
+              listenerAudio.currentTime = pending.position || 0;
+              listenerAudio.play().catch(()=>{});
+              setListenerPlayUI(true);
+            };
+            document.addEventListener('click', resume, {once:true});
+            document.addEventListener('touchstart', resume, {once:true});
+          });
+        }, waitMs);
+      }
     } else {
-      listenerAudio.pause();
-      listenerAudio.src = '';
-    }
-    listenerAudio.src = url;
-    listenerAudio.load();
-    listenerCurrentTrack = msg.trackIndex ?? listenerCurrentTrack;
-    listenerAudio.ontimeupdate = () => {
-      if (!listenerAudio.duration) return;
-      const p = listenerAudio.currentTime / listenerAudio.duration * 100;
-      document.getElementById('listener-progress').style.width = p + '%';
-      document.getElementById('listener-t-curr').textContent = fmt(listenerAudio.currentTime);
-    };
-    listenerAudio.onloadedmetadata = () => {
-      document.getElementById('listener-t-total').textContent = fmt(listenerAudio.duration);
-    };
-    const trackMeta = listenerQueue[msg.trackIndex];
-    if (trackMeta) {
-      document.getElementById('listener-song-title').textContent  = trackMeta.title  || 'Playing...';
-      document.getElementById('listener-song-artist').textContent = trackMeta.artist || 'Ready';
-    } else {
-      document.getElementById('listener-song-artist').textContent = 'Ready';
+      // Background preload — just notify UI with green dot
+      toast(`⚡ "${trackMeta?.title || 'Track ' + (trackIdx+1)}" preloaded!`);
     }
     renderListenerQueue();
-    setListenerBadge('live', 'Ready ✓');
-    receivedChunks = [];
-    toast('✅ Audio ready!');
-
-    // If there was a pending scheduled-play waiting for this file, execute it now
-    if (listenerPendingPlay) {
-      const pending = listenerPendingPlay;
-      listenerPendingPlay = null;
-      const waitMs = Math.max(0, pending.playAt - Date.now());
-      listenerAudio.currentTime = pending.position || 0;
-      clearTimeout(listenerAudio._playTimer);
-      listenerAudio._playTimer = setTimeout(() => {
-        listenerAudio.play().then(() => {
-          setListenerPlayUI(true);
-          toast('🎵 Playing in sync!');
-        }).catch(() => {
-          toast('🔔 Tap anywhere to start audio');
-          const resume = () => {
-            listenerAudio.currentTime = pending.position || 0;
-            listenerAudio.play().catch(()=>{});
-            setListenerPlayUI(true);
-          };
-          document.addEventListener('click', resume, {once:true});
-          document.addEventListener('touchstart', resume, {once:true});
-        });
-      }, waitMs);
-    }
   }
   // Scheduled Play — all listeners target same absolute timestamp
   if (msg.type==='scheduled-play') {
-    const needTrack = msg.trackIndex ?? 0;
-    // If we don't have audio OR we have a different track loaded, request the correct file first
-    const hasCorrectTrack = listenerAudio?.src && listenerCurrentTrack === needTrack;
-    if (!hasCorrectTrack) {
-      listenerCurrentTrack = needTrack;
-      if (listenerConn?.open) listenerConn.send({ type:'request-file', trackIndex: needTrack });
-      // Store play intent — execute once file arrives
-      listenerPendingPlay = msg;
-      if (msg.trackName) document.getElementById('listener-song-title').textContent = msg.trackName;
-      toast('⏳ Loading new track...');
-      return;
+    const needTrack    = msg.trackIndex ?? 0;
+    const preloadedUrl = listenerBlobUrls[needTrack];
+    const alreadyLoaded = listenerAudio?.src && listenerCurrentTrack === needTrack;
+
+    if (!alreadyLoaded) {
+      if (preloadedUrl) {
+        // ⚡ Already preloaded — switch to it instantly, no transfer wait
+        listenerCurrentTrack = needTrack;
+        if (!listenerAudio) {
+          listenerAudio = new Audio();
+          listenerAudio.volume = parseFloat(document.getElementById('listener-vol').value);
+        } else {
+          listenerAudio.pause(); listenerAudio.src = '';
+        }
+        listenerAudio.src = preloadedUrl;
+        listenerAudio.load();
+        listenerAudio.ontimeupdate = () => {
+          if (!listenerAudio.duration) return;
+          const p = listenerAudio.currentTime / listenerAudio.duration * 100;
+          document.getElementById('listener-progress').style.width = p + '%';
+          document.getElementById('listener-t-curr').textContent = fmt(listenerAudio.currentTime);
+        };
+        listenerAudio.onloadedmetadata = () => {
+          document.getElementById('listener-t-total').textContent = fmt(listenerAudio.duration);
+        };
+        const meta = listenerQueue[needTrack];
+        if (meta) {
+          document.getElementById('listener-song-title').textContent  = meta.title  || msg.trackName || '—';
+          document.getElementById('listener-song-artist').textContent = meta.artist || '';
+        }
+        renderListenerQueue();
+      } else {
+        // Not preloaded — request file and store play intent
+        listenerCurrentTrack = needTrack;
+        if (listenerConn?.open) listenerConn.send({ type:'request-file', trackIndex: needTrack });
+        listenerPendingPlay = msg;
+        if (msg.trackName) document.getElementById('listener-song-title').textContent = msg.trackName;
+        toast('⏳ Loading new track...');
+        return;
+      }
     }
-    const now = Date.now();
-    const waitMs = Math.max(0, msg.playAt - now);
+
+    // Execute play
+    const waitMs = Math.max(0, msg.playAt - Date.now());
     if (msg.trackName) document.getElementById('listener-song-title').textContent = msg.trackName;
     listenerAudio.currentTime = msg.position || 0;
     clearTimeout(listenerAudio._playTimer);
@@ -3156,26 +3214,42 @@ function setListenerVol(v) {
 }
 
 function renderListenerQueue() {
-  const list=document.getElementById('listener-queue-list');
-  if(!listenerQueue.length){
-    list.innerHTML='<div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:12px">No queue yet</div>';
+  const list = document.getElementById('listener-queue-list');
+  if (!listenerQueue.length) {
+    list.innerHTML = '<div style="color:var(--text3);font-size:0.75rem;text-align:center;padding:12px">No queue yet</div>';
     return;
   }
-  list.innerHTML='';
-  listenerQueue.forEach((t,i)=>{
-    const isNow=i===listenerCurrentTrack;
-    const voted=myVotes.has(i);
-    const div=document.createElement('div');
-    div.className='queue-item'+(isNow?' playing':'');
-    div.innerHTML=`
-      <div class="q-num">${isNow?'▶':i+1}</div>
+  list.innerHTML = '';
+  listenerQueue.forEach((t, i) => {
+    const isNow  = i === listenerCurrentTrack;
+    const isNext = i === listenerCurrentTrack + 1;
+    const voted  = myVotes.has(i);
+    const isBuffered = listenerBuffered.has(i);
+    const div = document.createElement('div');
+    div.className = 'queue-item' + (isNow ? ' playing' : '');
+    if (isNext) div.style.cssText = 'border-color:rgba(139,92,246,0.35);background:rgba(139,92,246,0.06)';
+
+    let statusBadge = '';
+    if (isNow)        statusBadge = `<span style="font-size:0.55rem;background:linear-gradient(135deg,var(--violet),var(--rose));color:#fff;padding:2px 7px;border-radius:99px;font-weight:800">▶ NOW</span>`;
+    else if (isNext)  statusBadge = `<span style="font-size:0.55rem;background:rgba(139,92,246,0.2);color:var(--violet);padding:2px 7px;border-radius:99px;font-weight:800;border:1px solid rgba(139,92,246,0.3)">UP NEXT</span>`;
+    else if (isBuffered) statusBadge = `<span style="font-size:0.55rem;color:var(--green);opacity:0.7" title="Ready">●</span>`;
+
+    div.innerHTML = `
+      <div class="q-num" style="${isNext?'color:var(--violet);font-weight:800':''}">
+        ${isNow ? '▶' : i + 1}
+      </div>
       <div class="q-art">🎵</div>
       <div class="q-info">
         <div class="q-name">${t.title}</div>
-        <div class="q-artist">${t.artist||'Unknown'}</div>
+        <div class="q-artist" style="display:flex;align-items:center;gap:6px">
+          <span>${t.artist || 'Unknown'}</span>
+          ${statusBadge}
+        </div>
       </div>
-      ${t.votes?`<div class="q-votes">👍 ${t.votes}</div>`:''}
-      ${!isNow?`<button class="btn btn-violet btn-xs ${voted?'':''}\" onclick="voteTrack(${i},event)">${voted?'✓ Voted':'👍'}</button>`:''}
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+        ${t.votes ? `<div class="q-votes">👍 ${t.votes}</div>` : ''}
+        ${!isNow ? `<button class="btn btn-violet btn-xs" onclick="voteTrack(${i},event)">${voted ? '✓' : '👍'}</button>` : ''}
+      </div>
     `;
     list.appendChild(div);
   });
@@ -3268,6 +3342,8 @@ function leaveRoom() {
   if(listenerConn)listenerConn.close();
   if(myPeer)myPeer.destroy();
   myPeer=null;listenerConn=null;lastJoinCode='';
+  listenerQueue=[]; listenerCurrentTrack=-1;
+  listenerBuffered.clear(); listenerBlobUrls={}; listenerPendingPlay=null;
   document.getElementById('listener-room-ui').style.display='none';
   document.getElementById('join-form-card').style.display='block';
   document.getElementById('join-form-card').querySelector('button').disabled=false;
