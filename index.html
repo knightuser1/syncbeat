@@ -1115,6 +1115,62 @@ input[type=range]::-webkit-slider-thumb {
 </style>
 </head>
 <body>
+
+<!-- ── SPLASH SCREEN ── -->
+<div id="splash-screen" style="
+  position:fixed;inset:0;z-index:99999;
+  background:#0c0c10;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  transition:opacity 0.7s ease;
+">
+  <img src="icon-512.png" style="
+    width:100vw;height:100vh;
+    object-fit:cover;
+    position:absolute;inset:0;
+    opacity:0.92;
+  ">
+  <!-- Overlay gradient so bottom fades into dark -->
+  <div style="
+    position:absolute;inset:0;
+    background:linear-gradient(
+      to bottom,
+      transparent 40%,
+      rgba(12,12,16,0.5) 70%,
+      rgba(12,12,16,0.95) 100%
+    );
+  "></div>
+  <!-- App name at bottom -->
+  <div style="
+    position:absolute;bottom:12vh;
+    text-align:center;
+    display:flex;flex-direction:column;align-items:center;gap:10px;
+  ">
+    <div style="
+      font-family:'Syne',sans-serif;font-size:2.2rem;font-weight:800;
+      background:linear-gradient(135deg,#fff,#c4b5fd);
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+      letter-spacing:-0.5px;
+    ">SyncBeat</div>
+    <div style="font-size:0.75rem;color:rgba(255,255,255,0.5);letter-spacing:2px;text-transform:uppercase;">
+      Listen Together
+    </div>
+    <!-- Loading dots -->
+    <div style="display:flex;gap:6px;margin-top:8px" id="splash-dots">
+      <div style="width:6px;height:6px;border-radius:50%;background:#8b5cf6;animation:splashDot 1.2s ease-in-out infinite"></div>
+      <div style="width:6px;height:6px;border-radius:50%;background:#c084fc;animation:splashDot 1.2s ease-in-out 0.2s infinite"></div>
+      <div style="width:6px;height:6px;border-radius:50%;background:#ff4d72;animation:splashDot 1.2s ease-in-out 0.4s infinite"></div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes splashDot {
+  0%,80%,100% { transform:scale(0.6); opacity:0.4; }
+  40%          { transform:scale(1.2); opacity:1; }
+}
+</style>
+
 <div class="ambient">
   <div class="ambient-blob"></div>
   <div class="ambient-blob"></div>
@@ -3935,6 +3991,19 @@ document.addEventListener('visibilitychange', async () => {
 // ── INIT ──
 buildEQ('host-eq');
 buildEQ('listener-eq-full', 16);
+
+// ── Splash screen fade out ──
+window.addEventListener('load', () => {
+  const splash = document.getElementById('splash-screen');
+  if (!splash) return;
+  // Show for 2 seconds then fade out
+  setTimeout(() => {
+    splash.style.opacity = '0';
+    setTimeout(() => {
+      splash.style.display = 'none';
+    }, 700); // matches transition duration
+  }, 2000);
+});
 
 // ══════════════════════════════════════════
 //  PWA — SERVICE WORKER + INSTALL PROMPT
