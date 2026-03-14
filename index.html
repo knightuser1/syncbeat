@@ -2168,7 +2168,13 @@ const PLAY_COUNTDOWN_MS = 350;
 function togglePlay() {
   if (!queue.length || currentTrack < 0) { toast('⚠️ Upload a song first'); return; }
   if (hostAudioEl.paused) {
-    const playAt = Date.now() + PLAY_COUNTDOWN_MS;
+    // If YouTube is still playing in background, stop it first
+    if (ytHostPlayer && ytIsPlaying) {
+      ytHostPlayer.pauseVideo();
+      ytIsPlaying = false;
+      broadcast({ type:'stop-audio' }); // stop YouTube on listeners too
+    }
+    const playAt  = Date.now() + PLAY_COUNTDOWN_MS;
     const position = hostAudioEl.currentTime;
     setTimeout(() => { hostAudioEl.play().catch(()=>{}); }, PLAY_COUNTDOWN_MS);
     isPlaying = true;
@@ -3635,22 +3641,18 @@ function switchSource(src) {
   document.getElementById('yt-compartment').classList.toggle('active', src==='youtube');
 
   if (src==='upload') {
-    // Stop YouTube on host
-    if (ytHostPlayer && ytIsPlaying) { ytHostPlayer.pauseVideo(); ytIsPlaying=false; }
-    // Stop YouTube on all listeners BEFORE sending source-switch
-    broadcast({ type:'stop-audio' });
+    // YouTube stays playing in background — host is just browsing upload panel
+    // Only stop file audio if it was somehow playing (shouldn't be, but safety)
+    // Do NOT pause YouTube, do NOT send stop-audio to listeners
   }
   if (src==='youtube') {
-    // Stop file audio on host
+    // Switching to YouTube — stop file audio on host
     if (isPlaying) { hostAudioEl.pause(); isPlaying=false; setHostPlayUI(false); }
-    // Stop file audio on all listeners BEFORE sending source-switch
+    // Stop file audio on listeners
     broadcast({ type:'stop-audio' });
+    setTimeout(() => broadcast({ type:'source-switch', source:'youtube' }), 150);
   }
-
-  // Small delay so listeners stop before new content starts
-  setTimeout(() => {
-    broadcast({ type:'source-switch', source:src });
-  }, 150);
+  // Note: switching back to upload tab does NOT notify listeners — YouTube keeps playing
 }
 
 // ── URL parsing ──
