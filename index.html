@@ -1212,7 +1212,18 @@ input[type=range]::-webkit-slider-thumb {
       <div class="card">
         <div class="section-header">
           <div class="card-label" style="margin-bottom:0">📡 Room Active</div>
-          <span class="badge badge-live" id="host-status-badge"><span class="dot pulse"></span> Live</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <span id="wakelock-badge" style="
+              display:none;align-items:center;gap:4px;
+              font-size:0.55rem;font-weight:800;
+              background:rgba(34,197,94,0.15);color:var(--green);
+              border:1px solid rgba(34,197,94,0.3);
+              padding:2px 8px;border-radius:99px;
+            " title="Screen staying on — listeners stay connected">
+              🔒 Screen On
+            </span>
+            <span class="badge badge-live" id="host-status-badge"><span class="dot pulse"></span> Live</span>
+          </div>
         </div>
         <div class="room-hero">
           <div style="font-size:0.6rem;letter-spacing:3px;color:var(--text3);text-transform:uppercase;margin-bottom:4px">Room Code</div>
@@ -2253,6 +2264,7 @@ async function hostCreate() {
     document.getElementById('host-code-display').textContent = code;
     buildEQ('host-eq');
     toast(`🎉 Room "${code}" is live!`);
+    requestWakeLock(); // Keep screen on while hosting
   } catch(e) {
     connStep('cs1','err');
     toast('❌ Failed. Try a different room code.');
@@ -2559,6 +2571,7 @@ function executeTransfer(targetPeerId) {
   }, 200);
 
   // Reset host UI silently
+  releaseWakeLock(); // no longer hosting — allow screen to sleep
   document.getElementById('host-room-ui').style.display    = 'none';
   document.getElementById('host-setup-card').style.display = 'block';
   document.getElementById('host-setup-card').querySelector('button').disabled = false;
@@ -3864,6 +3877,60 @@ function ytListenerSeek(msg) {
 function ytListenerSetVol(v) {
   if (ytListenerPlayer) ytListenerPlayer.setVolume(Math.round(v*100));
 }
+
+// ══════════════════════════════════════════
+//  WAKE LOCK — keeps screen on while hosting
+// ══════════════════════════════════════════
+let wakeLock = null;
+
+async function requestWakeLock() {
+  if (!('wakeLock' in navigator)) {
+    // Not supported — show info but don't break anything
+    console.log('Wake Lock not supported on this browser');
+    return;
+  }
+  try {
+    wakeLock = await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release', () => {
+      wakeLock = null;
+      updateWakeLockUI(false);
+    });
+    updateWakeLockUI(true);
+    console.log('✅ Wake Lock acquired — screen will stay on');
+  } catch (e) {
+    console.warn('Wake Lock failed:', e.message);
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock) {
+    wakeLock.release();
+    wakeLock = null;
+    updateWakeLockUI(false);
+  }
+}
+
+function updateWakeLockUI(active) {
+  const badge = document.getElementById('wakelock-badge');
+  if (badge) {
+    badge.style.display = active ? 'inline-flex' : 'none';
+    badge.title = active
+      ? 'Screen staying on — listeners stay connected'
+      : 'Wake Lock inactive';
+  }
+}
+
+// Re-acquire Wake Lock when user comes back to the tab
+// (browser releases it automatically when tab is hidden)
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible') {
+    // If we're still hosting and wake lock was released, re-acquire
+    const isHosting = document.getElementById('host-room-ui')?.style.display !== 'none';
+    if (isHosting && !wakeLock) {
+      await requestWakeLock();
+    }
+  }
+});
 
 // ── INIT ──
 buildEQ('host-eq');
