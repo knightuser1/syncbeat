@@ -6,8 +6,8 @@
   "scope": "https://music.himanshushankar.in/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#2d1b69",
-  "theme_color": "#2d1b69",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "categories": ["music", "social", "entertainment"],
   "lang": "en",
   "icons": [
