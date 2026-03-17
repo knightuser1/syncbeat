@@ -3699,19 +3699,9 @@ function switchSource(src) {
   document.getElementById('upload-compartment').classList.toggle('active', src==='upload');
   document.getElementById('yt-compartment').classList.toggle('active', src==='youtube');
 
-  if (src==='upload') {
-    // YouTube stays playing in background — host is just browsing upload panel
-    // Only stop file audio if it was somehow playing (shouldn't be, but safety)
-    // Do NOT pause YouTube, do NOT send stop-audio to listeners
-  }
-  if (src==='youtube') {
-    // Switching to YouTube — stop file audio on host
-    if (isPlaying) { hostAudioEl.pause(); isPlaying=false; setHostPlayUI(false); }
-    // Stop file audio on listeners
-    broadcast({ type:'stop-audio' });
-    setTimeout(() => broadcast({ type:'source-switch', source:'youtube' }), 150);
-  }
-  // Note: switching back to upload tab does NOT notify listeners — YouTube keeps playing
+  // Switching tabs NEVER stops audio on either side
+  // Audio only stops when host actually presses play on the other source
+  // (handled in ytTogglePlay and togglePlay respectively)
 }
 
 // ── URL parsing ──
@@ -3814,6 +3804,15 @@ function ytTogglePlay() {
     ytHostPlayer.pauseVideo();
     broadcast({ type:'yt-pause', position:ytHostPlayer.getCurrentTime() });
   } else {
+    // Stop upload audio on host if it was playing
+    if (isPlaying) {
+      hostAudioEl.pause();
+      isPlaying = false;
+      setHostPlayUI(false);
+      broadcast({ type:'stop-audio' });
+    }
+    // Notify listeners we're switching to YouTube source
+    broadcast({ type:'source-switch', source:'youtube' });
     const playAt = Date.now() + PLAY_COUNTDOWN_MS;
     const position = ytHostPlayer.getCurrentTime();
     setTimeout(()=>{ ytHostPlayer.playVideo(); }, PLAY_COUNTDOWN_MS);
